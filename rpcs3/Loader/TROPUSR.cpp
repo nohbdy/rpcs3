@@ -14,11 +14,12 @@ TROPUSRLoader::~TROPUSRLoader()
 	Close();
 }
 
-bool TROPUSRLoader::Load(std::string& filepath, std::string& configpath)
+bool TROPUSRLoader::Load(const std::string& filepath, const std::string& configpath)
 {
 	if (m_file)
 		Close();
 
+	// TODO: This seems to be always true... A bug in ExistsFile() ?
 	if (!Emu.GetVFS().ExistsFile(filepath))
 		Generate(filepath, configpath);
 
@@ -94,7 +95,7 @@ bool TROPUSRLoader::LoadTables()
 }
 
 // TODO: TROPUSRLoader::Save deletes the TROPUSR and creates it again. This is probably very slow.
-bool TROPUSRLoader::Save(std::string& filepath)
+bool TROPUSRLoader::Save(const std::string& filepath)
 {
 	if (m_file)
 		Close();
@@ -117,7 +118,7 @@ bool TROPUSRLoader::Save(std::string& filepath)
 	return true;
 }
 
-bool TROPUSRLoader::Generate(std::string& filepath, std::string& configpath)
+bool TROPUSRLoader::Generate(const std::string& filepath, const std::string& configpath)
 {
 	wxString path;
 	wxXmlDocument doc;
