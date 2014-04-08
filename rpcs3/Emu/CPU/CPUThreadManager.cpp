@@ -29,14 +29,14 @@ CPUThread& CPUThreadManager::AddThread(CPUThreadType type)
 
 	switch(type)
 	{
-	case CPU_THREAD_PPU:		new_thread = new PPUThread(); break;
-	case CPU_THREAD_SPU:		new_thread = new SPUThread(); break;
-	case CPU_THREAD_RAW_SPU:	new_thread = new RawSPUThread(m_raw_spu_num++); break;
-	case CPU_THREAD_ARMv7:		new_thread = new ARMv7Thread(); break;
+	case CPU_THREAD_PPU:     new_thread = new PPUThread(); break;
+	case CPU_THREAD_SPU:     new_thread = new SPUThread(); break;
+	case CPU_THREAD_RAW_SPU: new_thread = new RawSPUThread(m_raw_spu_num++); break;
+	case CPU_THREAD_ARMv7:   new_thread = new ARMv7Thread(); break;
 	default: assert(0);
 	}
 	
-	new_thread->SetId(Emu.GetIdManager().GetNewID(wxString::Format("%s Thread", new_thread->GetTypeString().wx_str()).ToStdString(), new_thread));
+	new_thread->SetId(Emu.GetIdManager().GetNewID(fmt::Format("%s Thread", new_thread->GetTypeString().c_str()), new_thread));
 
 	m_threads.Add(new_thread);
 #ifndef QT_UI

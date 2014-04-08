@@ -92,9 +92,7 @@ bool SELFDecrypter::LoadHeaders(bool isElf32)
 	{
 		ControlInfo* cinfo = new ControlInfo();
 		cinfo->Load(self_f);
-
 		i += cinfo->size;
-
 		ctrlinfo_arr.Move(cinfo);
 	}
 
@@ -155,12 +153,12 @@ void SELFDecrypter::ShowHeaders(bool isElf32)
 	ConLog.Write("----------------------------------------------------");
 	ConLog.Write("ELF program headers");
 	ConLog.Write("----------------------------------------------------");
-	for(int i = 0; i < ((isElf32) ? phdr32_arr.GetCount() : phdr64_arr.GetCount()); i++)
+	for(unsigned int i = 0; i < ((isElf32) ? phdr32_arr.GetCount() : phdr64_arr.GetCount()); i++)
 		isElf32 ? phdr32_arr[i].Show() : phdr64_arr[i].Show();
 	ConLog.Write("----------------------------------------------------");
 	ConLog.Write("Section info");
 	ConLog.Write("----------------------------------------------------");
-	for(int i = 0; i < secinfo_arr.GetCount(); i++)
+	for(unsigned int i = 0; i < secinfo_arr.GetCount(); i++)
 		secinfo_arr[i].Show();
 	ConLog.Write("----------------------------------------------------");
 	ConLog.Write("SCE version info");
@@ -169,12 +167,12 @@ void SELFDecrypter::ShowHeaders(bool isElf32)
 	ConLog.Write("----------------------------------------------------");
 	ConLog.Write("Control info");
 	ConLog.Write("----------------------------------------------------");
-	for(int i = 0; i < ctrlinfo_arr.GetCount(); i++)
+	for(unsigned int i = 0; i < ctrlinfo_arr.GetCount(); i++)
 		ctrlinfo_arr[i].Show();
 	ConLog.Write("----------------------------------------------------");
 	ConLog.Write("ELF section headers");
 	ConLog.Write("----------------------------------------------------");
-	for(int i = 0; i < ((isElf32) ? shdr32_arr.GetCount() : shdr64_arr.GetCount()); i++)
+	for(unsigned int i = 0; i < ((isElf32) ? shdr32_arr.GetCount() : shdr64_arr.GetCount()); i++)
 		isElf32 ? shdr32_arr[i].Show() : shdr64_arr[i].Show();
 	ConLog.Write("----------------------------------------------------");
 }
@@ -187,7 +185,7 @@ bool SELFDecrypter::DecryptNPDRM(u8 *metadata, u32 metadata_size)
 	u8 npdrm_iv[0x10];
 
 	// Parse the control info structures to find the NPDRM control info.
-	for(int i = 0; i < ctrlinfo_arr.GetCount(); i++)
+	for(unsigned int i = 0; i < ctrlinfo_arr.GetCount(); i++)
 	{
 		if (ctrlinfo_arr[i].type == 3)
 		{
@@ -310,7 +308,7 @@ bool SELFDecrypter::LoadMetadata()
 
 	// Load the metadata section headers.
 	meta_shdr.Clear();
-	for (int i = 0; i < meta_hdr.section_count; i++)
+	for (unsigned int i = 0; i < meta_hdr.section_count; i++)
 	{
 		MetadataSectionHeader* m_shdr = new MetadataSectionHeader();
 		m_shdr->Load(metadata_headers + sizeof(meta_hdr) + sizeof(MetadataSectionHeader) * i);
@@ -330,7 +328,7 @@ bool SELFDecrypter::DecryptData()
 	aes_context aes;
 
 	// Calculate the total data size.
-	for (int i = 0; i < meta_hdr.section_count; i++)
+	for (unsigned int i = 0; i < meta_hdr.section_count; i++)
 	{
 		if (meta_shdr[i].encrypted == 3)
 		{
@@ -346,7 +344,7 @@ bool SELFDecrypter::DecryptData()
 	u32 data_buf_offset = 0;
 
 	// Parse the metadata section headers to find the offsets of encrypted data.
-	for (int i = 0; i < meta_hdr.section_count; i++)
+	for (unsigned int i = 0; i < meta_hdr.section_count; i++)
 	{
 		size_t ctr_nc_off = 0;
 		u8 ctr_stream_block[0x10];
@@ -370,7 +368,7 @@ bool SELFDecrypter::DecryptData()
 				self_f.Seek(meta_shdr[i].data_offset);
 				self_f.Read(buf, meta_shdr[i].data_size);
 
-				// Zero out our ctr nonce
+				// Zero out our ctr nonce.
 				memset(ctr_stream_block, 0, sizeof(ctr_stream_block));
 
 				// Perform AES-CTR encryption on the data blocks.
@@ -398,7 +396,7 @@ bool SELFDecrypter::MakeElf(const std::string& elf, bool isElf32)
 	wxFile e(elf.c_str(), wxFile::write);
 	if(!e.IsOpened())
 	{
-		ConLog.Error("Could not create ELF file! (%s)", wxString(elf).wx_str());
+		ConLog.Error("Could not create ELF file! (%s)", elf.c_str());
 		return false;
 	}
 
@@ -414,7 +412,7 @@ bool SELFDecrypter::MakeElf(const std::string& elf, bool isElf32)
 		for(u32 i = 0; i < elf32_hdr.e_phnum; ++i)
 			WritePhdr(e, phdr32_arr[i]);
 
-		for (int i = 0; i < meta_hdr.section_count; i++)
+		for (unsigned int i = 0; i < meta_hdr.section_count; i++)
 		{
 			// PHDR type.
 			if (meta_shdr[i].type == 2)
@@ -447,7 +445,7 @@ bool SELFDecrypter::MakeElf(const std::string& elf, bool isElf32)
 			WritePhdr(e, phdr64_arr[i]);
 
 		// Write data.
-		for (int i = 0; i < meta_hdr.section_count; i++)
+		for (unsigned int i = 0; i < meta_hdr.section_count; i++)
 		{
 			// PHDR type.
 			if (meta_shdr[i].type == 2)
@@ -510,18 +508,18 @@ bool SELFDecrypter::GetKeyFromRap(u8 *content_id, u8 *npdrm_key)
 	memset(rap_key, 0, 0x10);
 
 	// Try to find a matching RAP file under dev_usb000.
-	wxString ci_str(content_id);
-	wxString rap_path(wxGetCwd() + "/dev_usb000/" + ci_str + ".rap");
+	std::string ci_str((const char *)content_id);
+	std::string rap_path(fmt::ToUTF8(wxGetCwd()) + "/dev_usb000/" + ci_str + ".rap");
 
 	// Check if we have a valid RAP file.
-	if (!wxFile::Exists(rap_path))
+	if (!wxFile::Exists(fmt::FromUTF8(rap_path)))
 	{
 		ConLog.Error("This application requires a valid RAP file for decryption!");
 		return false;
 	}
 
 	// Open the RAP file and read the key.
-	wxFile rap_file(rap_path, wxFile::read);
+	wxFile rap_file(fmt::FromUTF8(rap_path), wxFile::read);
 
 	if (!rap_file.IsOpened())
 	{
@@ -529,12 +527,12 @@ bool SELFDecrypter::GetKeyFromRap(u8 *content_id, u8 *npdrm_key)
 		return false;
 	}
 
-	ConLog.Write("Loading RAP file %s", ci_str.wc_str() + wchar_t(".rap"));
+	ConLog.Write("Loading RAP file %s", (ci_str + ".rap").c_str());
 	rap_file.Read(rap_key, 0x10);
 	rap_file.Close();
 
-	// Call the key vault to convert the RAP key.
-	key_v.RapToRif(rap_key, npdrm_key);
+	// Convert the RAP key.
+	rap_to_rif(rap_key, npdrm_key);
 
 	return true;
 }
@@ -575,11 +573,11 @@ bool IsSelfElf32(const std::string& path)
 bool CheckDebugSelf(const std::string& self, const std::string& elf)
 {
 	// Open the SELF file.
-	wxFile s(self.c_str());
+	wxFile s(fmt::FromUTF8(self));
 
 	if(!s.IsOpened())
 	{
-		ConLog.Error("Could not open SELF file! (%s)", wxString(self).wx_str());
+		ConLog.Error("Could not open SELF file! (%s)", self.c_str());
 		return false;
 	}
 
@@ -603,10 +601,10 @@ bool CheckDebugSelf(const std::string& self, const std::string& elf)
 		s.Seek(elf_offset);
 
 		// Write the real ELF file back.
-		wxFile e(elf.c_str(), wxFile::write);
+		wxFile e(fmt::FromUTF8(elf), wxFile::write);
 		if(!e.IsOpened())
 		{
-			ConLog.Error("Could not create ELF file! (%s)", wxString(elf).wx_str());
+			ConLog.Error("Could not create ELF file! (%s)", elf.c_str());
 			return false;
 		}
 

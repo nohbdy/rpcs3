@@ -175,15 +175,16 @@ bool ELF32Loader::LoadShdrInfo()
 	for(u32 i=0; i<shdr_arr.GetCount(); ++i)
 	{
 		elf32_f.Seek(shdr_arr[ehdr.e_shstrndx].sh_offset + shdr_arr[i].sh_name);
-		wxString name = wxEmptyString;
+		Array<char> name;
 		while(!elf32_f.Eof())
 		{
 			char c;
 			elf32_f.Read(&c, 1);
 			if(c == 0) break;
-			name += c;
+			name.AddCpy(c);
 		}
-		shdr_name_arr.Add(name);	
+		name.AddCpy('\0');
+		shdr_name_arr.push_back(std::string(name.GetPtr()));	
 	}
 
 	return true;
@@ -274,13 +275,13 @@ bool ELF32Loader::LoadPhdrData(u64 _offset)
 
 			if(note.descsz == sizeof(note.desc))
 			{
-				ConLog.Warning("name = %s", wxString(note.name, 8).wx_str());
+				ConLog.Warning("name = %s", std::string((const char *)note.name, 8).c_str());
 				ConLog.Warning("ls_size = %d", note.desc.ls_size);
 				ConLog.Warning("stack_size = %d", note.desc.stack_size);
 			}
 			else
 			{
-				ConLog.Warning("desc = '%s'", wxString(note.desc_text, 32).wx_str());
+				ConLog.Warning("desc = '%s'", std::string(note.desc_text, 32).c_str());
 			}
 		}
 #ifdef LOADER_DEBUG
@@ -298,7 +299,7 @@ bool ELF32Loader::LoadShdrData(u64 offset)
 		Elf32_Shdr& shdr = shdr_arr[i];
 
 #ifdef LOADER_DEBUG
-		if(i < shdr_name_arr.GetCount()) ConLog.Write("Name: %s", shdr_name_arr[i].wx_str());
+		if(i < shdr_name_arr.GetCount()) ConLog.Write("Name: %s", shdr_name_arr[i].c_str());
 		shdr.Show();
 		ConLog.SkipLn();
 #endif

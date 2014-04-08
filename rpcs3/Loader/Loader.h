@@ -32,10 +32,10 @@ enum ShdrType
 
 enum ShdrFlag
 {
-	SHF_WRITE		= 0x1,
-	SHF_ALLOC		= 0x2,
-	SHF_EXECINSTR	= 0x4,
-	SHF_MASKPROC	= 0xf0000000,
+	SHF_WRITE     = 0x1,
+	SHF_ALLOC     = 0x2,
+	SHF_EXECINSTR = 0x4,
+	SHF_MASKPROC  = 0xf0000000,
 };
 
 __forceinline static u8 Read8(vfsStream& f)
@@ -116,12 +116,12 @@ __forceinline static void Write64LE(wxFile& f, const u64 data)
 	Write32LE(f, data >> 32);
 }
 
-const wxString Ehdr_DataToString(const u8 data);
-const wxString Ehdr_TypeToString(const u16 type);
-const wxString Ehdr_OS_ABIToString(const u8 os_abi);
-const wxString Ehdr_MachineToString(const u16 machine);
-const wxString Phdr_FlagsToString(u32 flags);
-const wxString Phdr_TypeToString(const u32 type);
+const std::string Ehdr_DataToString(const u8 data);
+const std::string Ehdr_TypeToString(const u16 type);
+const std::string Ehdr_OS_ABIToString(const u8 os_abi);
+const std::string Ehdr_MachineToString(const u16 machine);
+const std::string Phdr_FlagsToString(u32 flags);
+const std::string Phdr_TypeToString(const u32 type);
 
 struct sys_process_param_info
 {
@@ -210,7 +210,7 @@ public:
 	Loader(vfsFileBase& stream);
 	~Loader();
 
-	void Open(const wxString& path);
+	void Open(const std::string& path);
 	void Open(vfsFileBase& stream);
 	bool Analyze();
 

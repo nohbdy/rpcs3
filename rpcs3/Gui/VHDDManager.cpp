@@ -49,7 +49,7 @@ enum
 	id_add_hdd
 };
 
-VHDDExplorer::VHDDExplorer(wxWindow* parent, const wxString& hdd_path) : wxDialog(parent, wxID_ANY, "Virtual HDD Explorer", wxDefaultPosition)
+VHDDExplorer::VHDDExplorer(wxWindow* parent, const std::string& hdd_path) : wxDialog(parent, wxID_ANY, "Virtual HDD Explorer", wxDefaultPosition)
 {
 	m_list = new wxListView(this);
 	m_drop_target = new VHDDListDropTarget(m_list);
@@ -69,40 +69,40 @@ VHDDExplorer::VHDDExplorer(wxWindow* parent, const wxString& hdd_path) : wxDialo
 
 	m_hdd = new vfsHDD(nullptr, hdd_path);
 	UpdateList();
-	Connect(m_list->GetId(),	wxEVT_COMMAND_LIST_BEGIN_DRAG,		wxListEventHandler(VHDDExplorer::OnListDrag));
-	Connect(m_list->GetId(),	wxEVT_COMMAND_LIST_ITEM_ACTIVATED,	wxListEventHandler(VHDDExplorer::DClick));
-	Connect(m_list->GetId(),	wxEVT_COMMAND_RIGHT_CLICK,			wxCommandEventHandler(VHDDExplorer::OnContextMenu));
+	Connect(m_list->GetId(), wxEVT_COMMAND_LIST_BEGIN_DRAG,     wxListEventHandler(VHDDExplorer::OnListDrag));
+	Connect(m_list->GetId(), wxEVT_COMMAND_LIST_ITEM_ACTIVATED, wxListEventHandler(VHDDExplorer::DClick));
+	Connect(m_list->GetId(), wxEVT_COMMAND_RIGHT_CLICK,         wxCommandEventHandler(VHDDExplorer::OnContextMenu));
 	m_list->Connect(wxEVT_DROP_FILES, wxDropFilesEventHandler(VHDDExplorer::OnDropFiles), (wxObject*)0, this);
 
-	Connect(id_open,			wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnOpen));
-	Connect(id_rename,			wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnRename));
-	Connect(id_remove,			wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnRemove));
-	Connect(id_create_dir,		wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnCreateDir));
-	Connect(id_create_file,		wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnCreateFile));
-	Connect(id_import,			wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnImport));
-	Connect(id_export,			wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnExport));
+	Connect(id_open,         wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnOpen));
+	Connect(id_rename,       wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnRename));
+	Connect(id_remove,       wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnRemove));
+	Connect(id_create_dir,   wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnCreateDir));
+	Connect(id_create_file,  wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnCreateFile));
+	Connect(id_import,       wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnImport));
+	Connect(id_export,       wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDExplorer::OnExport));
 }
 
 void VHDDExplorer::UpdateList()
 {
 	m_list->Freeze();
 	m_list->DeleteAllItems();
-	m_entries.Clear();
-	m_names.Clear();
+	m_entries.clear();
+	m_names.clear();
 
 	u64 block;
 	vfsHDD_Entry entry;
-	wxString name;
+	std::string name;
 
 	for(bool is_ok = m_hdd->GetFirstEntry(block, entry, name); is_ok; is_ok = m_hdd->GetNextEntry(block, entry, name))
 	{
 		int item = m_list->GetItemCount();
-		m_list->InsertItem(item, name);
+		m_list->InsertItem(item, fmt::FromUTF8(name));
 		m_list->SetItem(item, 1, entry.type == vfsHDD_Entry_Dir ? "Dir" : "File");
 		m_list->SetItem(item, 2, wxString::Format("%lld", entry.size));
 		m_list->SetItem(item, 3, wxDateTime().Set(time_t(entry.ctime)).Format());
-		m_entries.AddCpy(entry);
-		m_names.Add(name);
+		m_entries.push_back(entry);
+		m_names.push_back(name);
 	}
 
 	m_list->SetColumnWidth(0, wxLIST_AUTOSIZE_USEHEADER);
@@ -112,7 +112,7 @@ void VHDDExplorer::UpdateList()
 	m_list->Thaw();
 }
 
-void VHDDExplorer::Import(const wxString& path, const wxString& to)
+void VHDDExplorer::Import(const std::string& path, const std::string& to)
 {
 	if(!m_hdd->Create(vfsHDD_Entry_File, to))
 	{
@@ -126,7 +126,7 @@ void VHDDExplorer::Import(const wxString& path, const wxString& to)
 		return;
 	}
 
-	wxFile f(path);
+	wxFile f(fmt::FromUTF8(path));
 	char buf[256];
 
 	while(!f.Eof())
@@ -137,15 +137,15 @@ void VHDDExplorer::Import(const wxString& path, const wxString& to)
 	m_hdd->Close();
 }
 
-void VHDDExplorer::Export(const wxString& path, const wxString& to)
+void VHDDExplorer::Export(const std::string& path, const std::string& to)
 {
 	if(!m_hdd->Open(path))
 	{
-		wxMessageBox(wxString::Format("EXPORT ERROR: file open error. (%s)", path.wx_str()));
+		wxMessageBox(wxString::Format("EXPORT ERROR: file open error. (%s)", path.c_str()));
 		return;
 	}
 
-	wxFile f(to, wxFile::write);
+	wxFile f(fmt::FromUTF8(to), wxFile::write);
 	char buf[256];
 
 	while(u64 size = m_hdd->Read(buf, 256))
@@ -189,7 +189,7 @@ void VHDDExplorer::OnDropFiles(wxDropFilesEvent& event)
 	for(int i=0; i<count; ++i)
 	{
 		ConLog.Write("Importing '%s'", dropped[i].wx_str());
-		Import(dropped[i], wxFileName(dropped[i]).GetFullName());
+		Import(fmt::ToUTF8(dropped[i]), fmt::ToUTF8(wxFileName(dropped[i]).GetFullName()));
 	}
 
 	UpdateList();
@@ -248,20 +248,20 @@ void VHDDExplorer::OnRemove(wxCommandEvent& event)
 void VHDDExplorer::OnCreateDir(wxCommandEvent& event)
 {
 	int i = 1;
-	static const wxString& fmt = "New Dir (%d)";
-	while(m_hdd->HasEntry(wxString::Format(fmt, i))) i++;
+	static const std::string& fmt = "New Dir (%d)";
+	while(m_hdd->HasEntry(fmt::Format(fmt, i))) i++;
 
-	m_hdd->Create(vfsHDD_Entry_Dir, wxString::Format(fmt, i));
+	m_hdd->Create(vfsHDD_Entry_Dir, fmt::Format(fmt, i));
 	UpdateList();
 }
 
 void VHDDExplorer::OnCreateFile(wxCommandEvent& event)
 {
 	int i = 1;
-	static const wxString& fmt = "New File (%d)";
-	while(m_hdd->HasEntry(wxString::Format(fmt, i))) i++;
+	static const std::string& fmt = "New File (%d)";
+	while (m_hdd->HasEntry(fmt::Format(fmt, i))) i++;
 
-	m_hdd->Create(vfsHDD_Entry_File, wxString::Format(fmt, i));
+	m_hdd->Create(vfsHDD_Entry_File, fmt::Format(fmt, i));
 	UpdateList();
 }
 
@@ -281,7 +281,7 @@ void VHDDExplorer::OnImport(wxCommandEvent& event)
 	{
 		if(wxFileExists(paths[i]))
 		{
-			Import(paths[i], wxFileName(paths[i]).GetFullName());
+			Import(fmt::ToUTF8(paths[i]), fmt::ToUTF8(wxFileName(paths[i]).GetFullName()));
 		}
 	}
 	UpdateList();
@@ -300,20 +300,20 @@ void VHDDExplorer::OnExport(wxCommandEvent& event)
 
 		for(int sel = m_list->GetNextSelected(-1); sel != wxNOT_FOUND; sel = m_list->GetNextSelected(sel))
 		{
-			Export(m_names[sel], ctrl.GetPath() + '\\' + m_names[sel]);
+			Export(m_names[sel], fmt::ToUTF8(ctrl.GetPath()) + '\\' + m_names[sel]);
 		}
 	}
 	else
 	{
 		int sel = m_list->GetFirstSelected();
-		wxFileDialog ctrl(this, "Select export file", wxEmptyString, m_names[sel], wxFileSelectorDefaultWildcardStr, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+		wxFileDialog ctrl(this, "Select export file", wxEmptyString, fmt::FromUTF8(m_names[sel]), wxFileSelectorDefaultWildcardStr, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
 
 		if(ctrl.ShowModal() == wxID_CANCEL)
 		{
 			return;
 		}
 
-		Export(m_names[sel], ctrl.GetPath());
+		Export(m_names[sel], fmt::ToUTF8(ctrl.GetPath()));
 	}
 
 	UpdateList();
@@ -389,15 +389,15 @@ VHDDManagerDialog::VHDDManagerDialog(wxWindow* parent)
 	m_list->InsertColumn(0, "Path");
 	//m_list->InsertColumn(1, "Size");
 	//m_list->InsertColumn(2, "Block size");
-	Connect(m_list->GetId(),	wxEVT_COMMAND_LIST_ITEM_ACTIVATED, wxListEventHandler(VHDDManagerDialog::DClick));
-	Connect(m_list->GetId(),	wxEVT_COMMAND_RIGHT_CLICK,	wxCommandEventHandler(VHDDManagerDialog::OnContextMenu));
+	Connect(m_list->GetId(),    wxEVT_COMMAND_LIST_ITEM_ACTIVATED, wxListEventHandler(VHDDManagerDialog::DClick));
+	Connect(m_list->GetId(),    wxEVT_COMMAND_RIGHT_CLICK,   wxCommandEventHandler(VHDDManagerDialog::OnContextMenu));
 
-	Connect(id_add_hdd,			wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDManagerDialog::AddHDD));
-	Connect(id_open,			wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDManagerDialog::OnOpen));
-	Connect(id_remove,			wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDManagerDialog::OnRemove));
-	Connect(id_create_hdd,		wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDManagerDialog::OnCreateHDD));
+	Connect(id_add_hdd,         wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDManagerDialog::AddHDD));
+	Connect(id_open,            wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDManagerDialog::OnOpen));
+	Connect(id_remove,          wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDManagerDialog::OnRemove));
+	Connect(id_create_hdd,      wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(VHDDManagerDialog::OnCreateHDD));
 	Connect(wxEVT_CLOSE_WINDOW, wxCloseEventHandler(VHDDManagerDialog::OnClose));
-	LoadPathes();
+	LoadPaths();
 	UpdateList();
 }
 
@@ -406,9 +406,9 @@ void VHDDManagerDialog::UpdateList()
 	m_list->Freeze();
 	m_list->DeleteAllItems();
 
-	for(size_t i=0; i<m_pathes.GetCount(); ++i)
+	for(size_t i=0; i<m_paths.size(); ++i)
 	{
-		m_list->InsertItem(i, m_pathes[i]);
+		m_list->InsertItem(i, m_paths[i]);
 	}
 
 	m_list->SetColumnWidth(0, wxLIST_AUTOSIZE_USEHEADER);
@@ -420,7 +420,7 @@ void VHDDManagerDialog::UpdateList()
 
 void VHDDManagerDialog::Open(int sel)
 {
-	VHDDExplorer dial(this, m_pathes[sel]);
+	VHDDExplorer dial(this, m_paths[sel]);
 	dial.ShowModal();
 }
 
@@ -439,14 +439,14 @@ void VHDDManagerDialog::AddHDD(wxCommandEvent& event)
 		return;
 	}
 
-	wxArrayString pathes;
-	ctrl.GetPaths(pathes);
-	for(size_t i=0; i<pathes.GetCount(); ++i)
+	wxArrayString paths;
+	ctrl.GetPaths(paths);
+	for(size_t i=0; i<paths.GetCount(); ++i)
 	{
 		bool skip = false;
-		for(size_t j=0; j<m_pathes.GetCount(); ++j)
+		for(size_t j=0; j<m_paths.size(); ++j)
 		{
-			if(m_pathes[j].CmpNoCase(pathes[i]) == 0)
+			if(fmt::FromUTF8(m_paths[j]).CmpNoCase(paths[i]) == 0)
 			{
 				skip = true;
 				break;
@@ -455,7 +455,7 @@ void VHDDManagerDialog::AddHDD(wxCommandEvent& event)
 		
 		if(!skip)
 		{
-			m_pathes.Move(new wxString(pathes[i].c_str()));
+			m_paths.emplace_back(fmt::ToUTF8(paths[i]));
 		}
 	}
 	UpdateList();
@@ -483,7 +483,7 @@ void VHDDManagerDialog::OnRemove(wxCommandEvent& event)
 {
 	for(int sel = m_list->GetNextSelected(-1), offs = 0; sel != wxNOT_FOUND; sel = m_list->GetNextSelected(sel), --offs)
 	{
-		m_pathes.RemoveAt(sel + offs);
+		m_paths.erase(m_paths.begin() + (sel + offs));
 	}
 
 	UpdateList();
@@ -505,45 +505,43 @@ void VHDDManagerDialog::OnCreateHDD(wxCommandEvent& event)
 	{
 		u64 size, bsize;
 		dial.GetResult(size, bsize);
-		vfsHDDManager::CreateHDD(ctrl.GetPath(), size, bsize);
-		m_pathes.AddCpy(ctrl.GetPath());
+		vfsHDDManager::CreateHDD(fmt::ToUTF8(ctrl.GetPath()), size, bsize);
+		m_paths.push_back(fmt::ToUTF8(ctrl.GetPath()));
 		UpdateList();
 	}
 }
 
 void VHDDManagerDialog::OnClose(wxCloseEvent& event)
 {
-	SavePathes();
+	SavePaths();
 	event.Skip();
 }
 
-void VHDDManagerDialog::LoadPathes()
+void VHDDManagerDialog::LoadPaths()
 {
 	IniEntry<int> path_count;
 	path_count.Init("path_count", "HDDManager");
 	int count = 0;
 	count = path_count.LoadValue(count);
 
-	m_pathes.SetCount(count);
-
-	for(size_t i=0; i<m_pathes.GetCount(); ++i)
+	for(size_t i=0; i<count; ++i)
 	{
-		IniEntry<wxString> path_entry;
-		path_entry.Init(wxString::Format("path[%d]", i), "HDDManager");
-		new (m_pathes + i) wxString(path_entry.LoadValue(wxEmptyString));
+		IniEntry<std::string> path_entry;
+		path_entry.Init(fmt::Format("path[%d]", i), "HDDManager");
+		m_paths.emplace_back(path_entry.LoadValue(""));
 	}
 }
 
-void VHDDManagerDialog::SavePathes()
+void VHDDManagerDialog::SavePaths()
 {
 	IniEntry<int> path_count;
 	path_count.Init("path_count", "HDDManager");
-	path_count.SaveValue(m_pathes.GetCount());
+	path_count.SaveValue(m_paths.size());
 
-	for(size_t i=0; i<m_pathes.GetCount(); ++i)
+	for(size_t i=0; i<m_paths.size(); ++i)
 	{
-		IniEntry<wxString> path_entry;
-		path_entry.Init(wxString::Format("path[%d]", i), "HDDManager");
-		path_entry.SaveValue(m_pathes[i]);
+		IniEntry<std::string> path_entry;
+		path_entry.Init(fmt::Format("path[%d]", i), "HDDManager");
+		path_entry.SaveValue(m_paths[i]);
 	}
 }

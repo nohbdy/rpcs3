@@ -4,6 +4,7 @@
 #include "Emu/Audio/sysutil_audio.h"
 
 #include "cellSysutil.h"
+#include "cellSysutil_SaveData.h"
 
 #include "Loader/PSF.h"
 
@@ -173,28 +174,20 @@ int cellVideoOutGetState(u32 videoOut, u32 deviceIndex, u32 state_addr)
 	return CELL_VIDEO_OUT_ERROR_UNSUPPORTED_VIDEO_OUT;
 }
 
-int cellVideoOutGetResolution(u32 resolutionId, u32 resolution_addr)
+int cellVideoOutGetResolution(u32 resolutionId, mem_ptr_t<CellVideoOutResolution> resolution)
 {
 	cellSysutil.Log("cellVideoOutGetResolution(resolutionId=%d, resolution_addr=0x%x)",
-		resolutionId, resolution_addr);
+		resolutionId, resolution.GetAddr());
 
-	if(!Memory.IsGoodAddr(resolution_addr, sizeof(CellVideoOutResolution)))
-	{
-		return CELL_EFAULT;
-	}
+	if (!resolution.IsGood())
+		return CELL_VIDEO_OUT_ERROR_ILLEGAL_PARAMETER;
 	
 	u32 num = ResolutionIdToNum(resolutionId);
-
 	if(!num)
-	{
 		return CELL_EINVAL;
-	}
 
-	CellVideoOutResolution res;
-	re(res.width, ResolutionTable[num].width);
-	re(res.height, ResolutionTable[num].height);
-
-	Memory.WriteData(resolution_addr, res);
+	resolution->width = ResolutionTable[num].width;
+	resolution->height = ResolutionTable[num].height;
 
 	return CELL_VIDEO_OUT_SUCCEEDED;
 }
@@ -539,7 +532,7 @@ int cellAudioOutGetSoundAvailability(u32 audioOut, u32 type, u32 fs, u32 option)
 
 	option = 0;
 
-	int available = 2; // should be at least 2
+	int available = 8; // should be at least 2
 
 	switch(fs)
 	{
@@ -580,7 +573,7 @@ int cellAudioOutGetSoundAvailability2(u32 audioOut, u32 type, u32 fs, u32 ch, u3
 
 	option = 0;
 
-	int available = 2; // should be at least 2
+	int available = 8; // should be at least 2
 
 	switch(fs)
 	{
@@ -793,7 +786,7 @@ public:
 	virtual wxDirTraverseResult OnFile(const wxString& filename)
 	{
 		if (!wxRemoveFile(filename)){
-			cellSysutil.Error("Couldn't delete File: %s", filename.wx_str());
+			cellSysutil.Error("Couldn't delete File: %s", fmt::ToUTF8(filename).c_str());
 		}
 		return wxDIR_CONTINUE;
 	}
@@ -815,11 +808,13 @@ int cellSysCacheClear(void)
 	//if some software expects CELL_SYSCACHE_ERROR_NOTMOUNTED we need to check whether
 	//it was mounted before, for that we would need to save the state which I don't know
 	//where to put
-	wxString localPath;
-	Emu.GetVFS().GetDevice(wxString("/dev_hdd1/cache/"), localPath);
-	if (wxDirExists(localPath)){
+	std::string localPath;
+	Emu.GetVFS().GetDevice(std::string("/dev_hdd1/cache/"), localPath);
+	
+	//TODO: replace wxWidgetsSpecific filesystem stuff
+	if (wxDirExists(fmt::FromUTF8(localPath))){
 		WxDirDeleteTraverser deleter;
-		wxString f = wxFindFirstFile(localPath+"\\*",wxDIR);
+		wxString f = wxFindFirstFile(fmt::FromUTF8(localPath+"\\*"),wxDIR);
 		while (!f.empty())
 		{
 			wxDir dir(f);
@@ -839,7 +834,8 @@ int cellSysCacheMount(mem_ptr_t<CellSysCacheParam> param)
 	char id[CELL_SYSCACHE_ID_SIZE];
 	strncpy(id, param->cacheId, CELL_SYSCACHE_ID_SIZE);
 	strncpy(param->getCachePath, ("/dev_hdd1/cache/" + std::string(id) + "/").c_str(), CELL_SYSCACHE_PATH_MAX);
-	Emu.GetVFS().CreateDir(wxString(param->getCachePath));
+	param->getCachePath[CELL_SYSCACHE_PATH_MAX - 1] = '\0';
+	Emu.GetVFS().CreateDir(std::string(param->getCachePath));
 
 	return CELL_SYSCACHE_RET_OK_RELAYED;
 }
@@ -852,7 +848,7 @@ int cellHddGameCheck(u32 version, u32 dirName_addr, u32 errDialog, mem_func_ptr_
 	if (!Memory.IsGoodAddr(dirName_addr) || !funcStat.IsGood())
 		return CELL_HDDGAME_ERROR_PARAM;
 
-	std::string dirName = Memory.ReadString(dirName_addr).ToStdString();
+	std::string dirName = Memory.ReadString(dirName_addr);
 	if (dirName.size() != 9)
 		return CELL_HDDGAME_ERROR_PARAM;
 
@@ -885,16 +881,21 @@ int cellHddGameCheck(u32 version, u32 dirName_addr, u32 errDialog, mem_func_ptr_
 			return CELL_HDDGAME_ERROR_BROKEN;
 		}
 
-		get->getParam.parentalLevel = psf.m_info.parental_lvl;
-		get->getParam.attribute = psf.m_info.attr;
-		get->getParam.resolution = psf.m_info.resolution;
-		get->getParam.soundFormat = psf.m_info.sound_format;
-		memcpy(get->getParam.title, psf.m_info.name.mb_str(), CELL_HDDGAME_SYSP_TITLE_SIZE);
-		memcpy(get->getParam.dataVersion, psf.m_info.app_ver.mb_str(), CELL_HDDGAME_SYSP_VERSION_SIZE);
-		memcpy(get->getParam.titleId, dirName.c_str(), CELL_HDDGAME_SYSP_TITLEID_SIZE);
+		get->getParam.parentalLevel = psf.GetInteger("PARENTAL_LEVEL");
+		get->getParam.attribute = psf.GetInteger("ATTRIBUTE");
+		get->getParam.resolution = psf.GetInteger("RESOLUTION");
+		get->getParam.soundFormat = psf.GetInteger("SOUND_FORMAT");
+		std::string title = psf.GetString("TITLE");
+		memcpy(get->getParam.title, title.c_str(), min<size_t>(CELL_HDDGAME_SYSP_TITLE_SIZE,title.length()+1));
+		std::string app_ver = psf.GetString("APP_VER");
+		memcpy(get->getParam.dataVersion, app_ver.c_str(), min<size_t>(CELL_HDDGAME_SYSP_VERSION_SIZE,app_ver.length()+1));
+		memcpy(get->getParam.titleId, dirName.c_str(), min<size_t>(CELL_HDDGAME_SYSP_TITLEID_SIZE,dirName.length()+1));
 
 		for (u32 i=0; i<CELL_HDDGAME_SYSP_LANGUAGE_NUM; i++) {
-			memcpy(get->getParam.titleLang[i], psf.m_info.name.mb_str(), CELL_HDDGAME_SYSP_TITLE_SIZE); // TODO: Get real titleLang name
+			char key [16];
+			sprintf(key, "TITLE_%02d", i);
+			title = psf.GetString(key);
+			memcpy(get->getParam.titleLang[i], title.c_str(), min<size_t>(CELL_HDDGAME_SYSP_TITLE_SIZE, title.length() + 1));
 		}
 	}
 
@@ -906,6 +907,19 @@ int cellHddGameCheck(u32 version, u32 dirName_addr, u32 errDialog, mem_func_ptr_
 		return CELL_HDDGAME_ERROR_CBRESULT;
 
 	// TODO ?
+
+	return CELL_OK;
+}
+
+int cellSysutilGetBgmPlaybackStatus(mem_ptr_t<CellBgmPlaybackStatus> status)
+{
+	cellSysutil.Warning("cellSysutilGetBgmPlaybackStatus(status=0x%x)", status.GetAddr());
+
+	// non-essential, so always assume background music is stopped/disabled
+	status->playbackState = CELL_BGMPLAYBACK_STATUS_STOP;
+	status->enabled = CELL_BGMPLAYBACK_STATUS_DISABLE;
+	status->fadeRatio = 0; // volume ratio
+	memset(status->contentId, 0, sizeof(status->contentId));
 
 	return CELL_OK;
 }
@@ -939,6 +953,8 @@ void cellSysutil_init()
 	cellSysutil.AddFunc(0xed5d96af, cellAudioOutGetConfiguration);
 	cellSysutil.AddFunc(0xc96e89e9, cellAudioOutSetCopyControl);
 
+	cellSysutil.AddFunc(0xa11552f6, cellSysutilGetBgmPlaybackStatus);
+
 	cellSysutil.AddFunc(0x1e7bff94, cellSysCacheMount);
 	cellSysutil.AddFunc(0x744c1544, cellSysCacheClear);
 
@@ -947,4 +963,35 @@ void cellSysutil_init()
 	//cellSysutil.AddFunc(0xf82e2ef7, cellHddGameGetSizeKB);
 	//cellSysutil.AddFunc(0x9ca9ffa7, cellHddGameSetSystemVer);
 	//cellSysutil.AddFunc(0xafd605b3, cellHddGameExitBroken);
+
+	//cellSysutil_SaveData
+	//cellSysutil.AddFunc(0x04c06fc2, cellSaveDataGetListItem);
+	//cellSysutil.AddFunc(0x273d116a, cellSaveDataUserListExport);
+	//cellSysutil.AddFunc(0x27cb8bc2, cellSaveDataListDelete);
+	//cellSysutil.AddFunc(0x39d6ee43, cellSaveDataUserListImport);
+	//cellSysutil.AddFunc(0x46a2d878, cellSaveDataFixedExport);
+	//cellSysutil.AddFunc(0x491cc554, cellSaveDataListExport);
+	//cellSysutil.AddFunc(0x52541151, cellSaveDataFixedImport);
+	//cellSysutil.AddFunc(0x529231b0, cellSaveDataUserFixedImport);
+	//cellSysutil.AddFunc(0x6b4e0de6, cellSaveDataListImport);
+	//cellSysutil.AddFunc(0x7048a9ba, cellSaveDataUserListDelete);
+	//cellSysutil.AddFunc(0x95ae2cde, cellSaveDataUserFixedExport);
+	//cellSysutil.AddFunc(0xf6482036, cellSaveDataUserGetListItem);
+	cellSysutil.AddFunc(0x2de0d663, cellSaveDataListSave2);
+	cellSysutil.AddFunc(0x1dfbfdd6, cellSaveDataListLoad2);
+	//cellSysutil.AddFunc(0x2aae9ef5, cellSaveDataFixedSave2);
+	//cellSysutil.AddFunc(0x2a8eada2, cellSaveDataFixedLoad2);
+	//cellSysutil.AddFunc(0x8b7ed64b, cellSaveDataAutoSave2);
+	//cellSysutil.AddFunc(0xfbd5c856, cellSaveDataAutoLoad2);
+	//cellSysutil.AddFunc(0x4dd03a4e, cellSaveDataListAutoSave);
+	//cellSysutil.AddFunc(0x21425307, cellSaveDataListAutoLoad);
+	//cellSysutil.AddFunc(0xedadd797, cellSaveDataDelete2);
+	//cellSysutil.AddFunc(0x0f03cfb0, cellSaveDataUserListSave);
+	//cellSysutil.AddFunc(0x39dd8425, cellSaveDataUserListLoad);
+	//cellSysutil.AddFunc(0x40b34847, cellSaveDataUserFixedSave);
+	//cellSysutil.AddFunc(0x6e7264ed, cellSaveDataUserFixedLoad);
+	//cellSysutil.AddFunc(0x52aac4fa, cellSaveDataUserAutoSave);
+	//cellSysutil.AddFunc(0xcdc6aefd, cellSaveDataUserAutoLoad);
+	//cellSysutil.AddFunc(0x0e091c36, cellSaveDataUserListAutoSave);
+	//cellSysutil.AddFunc(0xe7fa820b, cellSaveDataEnableOverlay);
 }

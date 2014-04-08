@@ -34,8 +34,11 @@ struct SFuncOp
 struct SFunc
 {
 	func_caller* func;
+	void* ptr;
 	char* name;
 	Array<SFuncOp> ops;
+	u64 group;
+	u32 found;
 };
 
 extern ArrayF<SFunc> g_static_funcs_list;
@@ -68,14 +71,15 @@ public:
 	void SetName(const std::string& name);
 
 public:
-	void Log(const u32 id, wxString fmt, ...);
-	void Log(wxString fmt, ...);
+	//TODO: use variadic function templates here to be able to use string references and forward all arguments without copying
+	void Log(const u32 id, std::string fmt, ...);
+	void Log(std::string fmt, ...);
 
-	void Warning(const u32 id, wxString fmt, ...);
-	void Warning(wxString fmt, ...);
+	void Warning(const u32 id, std::string fmt, ...);
+	void Warning(std::string fmt, ...);
 
-	void Error(const u32 id, wxString fmt, ...);
-	void Error(wxString fmt, ...);
+	void Error(const u32 id, std::string fmt, ...);
+	void Error(std::string fmt, ...);
 
 	bool CheckID(u32 id) const;
 	template<typename T> bool CheckId(u32 id, T*& data)
@@ -110,7 +114,7 @@ public:
 
 	template<typename T> __forceinline void AddFunc(u32 id, T func);
 
-	template<typename T> __forceinline void AddFuncSub(const u64 ops[], char* name, T func);
+	template<typename T> __forceinline void AddFuncSub(const char group[8], const u64 ops[], char* name, T func);
 };
 
 template<typename T>
@@ -120,13 +124,16 @@ __forceinline void Module::AddFunc(u32 id, T func)
 }
 
 template<typename T>
-__forceinline void Module::AddFuncSub(const u64 ops[], char* name, T func)
+__forceinline void Module::AddFuncSub(const char group[8], const u64 ops[], char* name, T func)
 {
 	if (!ops[0]) return;
 
 	SFunc* sf = new SFunc;
+	sf->ptr = func;
 	sf->func = bind_func(func);
 	sf->name = name;
+	sf->group = *(u64*)group;
+	sf->found = 0;
 
 	// TODO: check for self-inclusions, use CRC
 
@@ -134,7 +141,8 @@ __forceinline void Module::AddFuncSub(const u64 ops[], char* name, T func)
 	{
 		SFuncOp op;
 		op.mask = ops[i] >> 32;
-		op.crc = ops[i] & op.mask;
+		op.crc = ops[i];
+		if (op.mask) op.crc &= op.mask;
 		op.mask = re(op.mask);
 		op.crc = re(op.crc);
 		sf->ops.AddCpy(op);

@@ -1,14 +1,12 @@
 #include "stdafx.h"
 #include "RSXTexture.h"
 
-RSXTexture::RSXTexture()
+RSXTexture::RSXTexture() : m_index(0), m_pitch(0), m_depth(1)
 {
-	m_index = 0;
 }
 
-RSXTexture::RSXTexture(u8 index)
+RSXTexture::RSXTexture(u8 index) : m_index(index), m_pitch(0), m_depth(1)
 {
-	m_index = index;
 }
 
 void RSXTexture::Init()

@@ -1,20 +1,21 @@
 #pragma once
+#include <vector>
 #include "PPUInstrTable.h"
 #include "Loader/ELF64.h"
 
 enum ArgType
 {
-	ARG_ERR		= 0,
-	ARG_NUM		= 1 << 0,
-	ARG_NUM16	= 1 << 1,
-	ARG_TXT		= 1 << 2,
-	ARG_REG_R	= 1 << 3,
-	ARG_REG_F	= 1 << 4,
-	ARG_REG_V	= 1 << 5,
-	ARG_REG_CR	= 1 << 6,
-	ARG_BRANCH	= 1 << 7,
-	ARG_INSTR	= 1 << 8,
-	ARG_IMM		= ARG_NUM | ARG_NUM16 | ARG_BRANCH,
+	ARG_ERR     = 0,
+	ARG_NUM     = 1 << 0,
+	ARG_NUM16   = 1 << 1,
+	ARG_TXT     = 1 << 2,
+	ARG_REG_R   = 1 << 3,
+	ARG_REG_F   = 1 << 4,
+	ARG_REG_V   = 1 << 5,
+	ARG_REG_CR  = 1 << 6,
+	ARG_BRANCH  = 1 << 7,
+	ARG_INSTR   = 1 << 8,
+	ARG_IMM     = ARG_NUM | ARG_NUM16 | ARG_BRANCH,
 };
 
 struct Arg
@@ -23,8 +24,8 @@ struct Arg
 	u32 value;
 	ArgType type;
 
-	Arg(const wxString& _string, const u32 _value = 0, const ArgType _type = ARG_ERR)
-		: string(_string.ToStdString())
+	Arg(const std::string& _string, const u32 _value = 0, const ArgType _type = ARG_ERR)
+		: string(_string)
 		, value(_value)
 		, type(_type)
 	{
@@ -35,10 +36,10 @@ struct SectionInfo
 {
 	Elf64_Shdr shdr;
 	std::string name;
-	Array<u8> code;
+	std::vector<u8> code;
 	u32 section_num;
 
-	SectionInfo(const wxString& name);
+	SectionInfo(const std::string& name);
 	~SectionInfo();
 
 	void SetDataSize(u32 size, u32 align = 0);
@@ -46,14 +47,13 @@ struct SectionInfo
 
 struct ProgramInfo
 {
-	Array<u8> code;
+	std::vector<u8> code;
 	Elf64_Phdr phdr;
 	bool is_preload;
 
 	ProgramInfo()
 	{
 		is_preload = false;
-		code.Clear();
 		memset(&phdr, 0, sizeof(Elf64_Phdr));
 	}
 };
@@ -67,16 +67,16 @@ class CompilePPUProgram
 		s32 m_id;
 		s32 m_addr;
 
-		Branch(const wxString& name, s32 pos)
-			: m_name(name.ToStdString())
+		Branch(const std::string& name, s32 pos)
+			: m_name(name)
 			, m_pos(pos)
 			, m_id(-1)
 			, m_addr(-1)
 		{
 		}
 
-		Branch(const wxString& name, u32 id, u32 addr)
-			: m_name(name.ToStdString())
+		Branch(const std::string& name, u32 id, u32 addr)
+			: m_name(name)
 			, m_pos(-1)
 			, m_id(id)
 			, m_addr(addr)
@@ -87,38 +87,38 @@ class CompilePPUProgram
 	bool m_analyze;
 	s64 p;
 	u64 m_line;
-	const wxString& m_asm;
+	const std::string& m_asm;
 	wxTextCtrl* m_asm_list;
 	wxTextCtrl* m_hex_list;
 	wxTextCtrl* m_err_list;
 	bool m_error;
-	Array<u32> m_code;
+	std::vector<u32> m_code;
 	bool m_end_args;
-	Array<Branch> m_branches;
+	std::vector<Branch> m_branches;
 	s32 m_branch_pos;
 	u32 m_text_addr;
-	wxString m_file_path;
+	std::string m_file_path;
 
 	struct SpData
 	{
 		std::string m_data;
 		u32 m_addr;
 
-		SpData(const wxString& data, u32 addr)
-			: m_data(data.ToStdString())
+		SpData(const std::string& data, u32 addr)
+			: m_data(data)
 			, m_addr(addr)
 		{
 		}
 	};
 
-	Array<SpData> m_sp_string;
-	Array<Arg> m_args;
+	std::vector<SpData> m_sp_string;
+	std::vector<Arg> m_args;
 	u32 m_cur_arg;
 
 public:
 	CompilePPUProgram(
-			const wxString& asm_,
-			const wxString& file_path = wxEmptyString,
+			const std::string& asm_,
+			const std::string& file_path = "",
 			wxTextCtrl* asm_list = nullptr,
 			wxTextCtrl* hex_list = nullptr,
 			wxTextCtrl* err_list = nullptr,
@@ -131,8 +131,8 @@ protected:
 	bool IsEnd() const;
 	bool IsEndLn(const char c) const;
 
-	void WriteHex(const wxString& text);
-	void WriteError(const wxString& error);
+	void WriteHex(const std::string& text);
+	void WriteError(const std::string& error);
 
 	char NextChar();
 	void NextLn();
@@ -141,21 +141,21 @@ protected:
 	void FirstChar();
 	void PrevArg();
 
-	bool GetOp(wxString& result);
-	int GetArg(wxString& result, bool func = false);
+	bool GetOp(std::string& result);
+	int GetArg(std::string& result, bool func = false);
 
 	bool CheckEnd(bool show_err = true);
 
 	void DetectArgInfo(Arg& arg);
 	void LoadArgs();
-	u32 GetBranchValue(const wxString& branch);
+	u32 GetBranchValue(const std::string& branch);
 
 	bool SetNextArgType(u32 types, bool show_err = true);
 	bool SetNextArgBranch(u8 aa, bool show_err = true);
 
 public:
-	static bool IsBranchOp(const wxString& op);
-	static bool IsFuncOp(const wxString& op);
+	static bool IsBranchOp(const std::string& op);
+	static bool IsFuncOp(const std::string& op);
 
 	enum SP_TYPE
 	{
@@ -177,15 +177,15 @@ public:
 		SP_NOR,
 	};
 
-	static SP_TYPE GetSpType(const wxString& op);
-	static wxString GetSpStyle(const SP_TYPE sp);
+	static SP_TYPE GetSpType(const std::string& op);
+	static std::string GetSpStyle(const SP_TYPE sp);
 
-	static bool IsSpOp(const wxString& op);
+	static bool IsSpOp(const std::string& op);
 
 protected:
-	Branch& GetBranch(const wxString& name);
-	void SetSp(const wxString& name, u32 addr, bool create);
-	void LoadSp(const wxString& op, Elf64_Shdr& s_opd);
+	Branch& GetBranch(const std::string& name);
+	void SetSp(const std::string& name, u32 addr, bool create);
+	void LoadSp(const std::string& op, Elf64_Shdr& s_opd);
 
 public:
 	void Compile();

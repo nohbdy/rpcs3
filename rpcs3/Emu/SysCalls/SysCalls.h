@@ -44,61 +44,61 @@ public:
 
 	const std::string& GetName() const { return m_module_name; }
 
-	void Log(const u32 id, wxString fmt, ...)
+	void Log(const u32 id, std::string fmt, ...)
 	{
 		if(Ini.HLELogging.GetValue())
 		{
 		va_list list;
 		va_start(list, fmt);
-		ConLog.Write(GetName() + wxString::Format("[%d]: ", id).wx_str() + wxString::FormatV(fmt, list).wx_str());
+		ConLog.Write(GetName() + fmt::Format("[%d]: ", id) + fmt::FormatV(fmt, list));
 		va_end(list);
 		}
 	}
 
-	void Log(wxString fmt, ...)
+	void Log(std::string fmt, ...)
 	{
 		if(Ini.HLELogging.GetValue())
 		{
 		va_list list;
 		va_start(list, fmt);
-		ConLog.Write(GetName() + ": " + wxString::FormatV(fmt, list).wx_str());
+		ConLog.Write(GetName() + ": " + fmt::FormatV(fmt, list));
 		va_end(list);
 		}
 	}
 
-	void Warning(const u32 id, wxString fmt, ...)
+	void Warning(const u32 id, std::string fmt, ...)
 	{
 //#ifdef SYSCALLS_DEBUG
 		va_list list;
 		va_start(list, fmt);
-		ConLog.Warning(GetName() + wxString::Format("[%d] warning: ", id).wx_str() + wxString::FormatV(fmt, list).wx_str());
+		ConLog.Warning(GetName() + fmt::Format("[%d] warning: ", id) + fmt::FormatV(fmt, list));
 		va_end(list);
 //#endif
 	}
 
-	void Warning(wxString fmt, ...)
+	void Warning(std::string fmt, ...)
 	{
 //#ifdef SYSCALLS_DEBUG
 		va_list list;
 		va_start(list, fmt);
-		ConLog.Warning(GetName() + " warning: " + wxString::FormatV(fmt, list).wx_str());
+		ConLog.Warning(GetName() + " warning: " + fmt::FormatV(fmt, list));
 		va_end(list);
 //#endif
 	}
 
-	void Error(const u32 id, wxString fmt, ...)
+	void Error(const u32 id, std::string fmt, ...)
 	{
 		va_list list;
 		va_start(list, fmt);
-		ConLog.Error(GetName() + wxString::Format("[%d] error: ", id).wx_str() + wxString::FormatV(fmt, list).wx_str());
+		ConLog.Error(GetName() + fmt::Format("[%d] error: ", id) + fmt::FormatV(fmt, list));
 		va_end(list);
 	}
 
-	void Error(wxString fmt, ...)
+	void Error(std::string fmt, ...)
 	{
 		va_list list;
 		va_start(list, fmt);
-		ConLog.Error(GetName() + " error: " + wxString::FormatV(fmt, list).wx_str());
+		ConLog.Error(GetName() + " error: " + fmt::FormatV(fmt, list));
 		va_end(list);
 	}
 
@@ -294,7 +294,7 @@ extern int cellFsStReadWaitCallback(u32 fd, u64 size, mem_func_ptr_t<void (*)(in
 
 //cellVideo
 extern int cellVideoOutGetState(u32 videoOut, u32 deviceIndex, u32 state_addr);
-extern int cellVideoOutGetResolution(u32 resolutionId, u32 resolution_addr);
+extern int cellVideoOutGetResolution(u32 resolutionId, mem_ptr_t<CellVideoOutResolution> resolution);
 extern int cellVideoOutConfigure(u32 videoOut, u32 config_addr, u32 option_addr, u32 waitForEvent);
 extern int cellVideoOutGetConfiguration(u32 videoOut, u32 config_addr, u32 option_addr);
 extern int cellVideoOutGetNumberOfDevice(u32 videoOut);
@@ -312,6 +312,8 @@ extern int cellPadGetInfo2(u32 info_addr);
 extern int cellPadSetPortSetting(u32 port_no, u32 port_setting);
 extern int cellPadInfoPressMode(u32 port_no);
 extern int cellPadInfoSensorMode(u32 port_no);
+extern int cellPadSetPressMode(u32 port_no, u32 mode);
+extern int cellPadSetSensorMode(u32 port_no, u32 mode);
 
 //cellKb
 extern int cellKbInit(u32 max_connect);
@@ -421,7 +423,7 @@ extern int sys_rsx_device_map(mem32_t a1, mem32_t a2, u32 a3);
 extern int sys_rsx_device_unmap();
 extern int sys_rsx_attribute();
 
-#define UNIMPLEMENTED_FUNC(module) module.Error("Unimplemented function: %s", wxString(__FUNCTION__).wx_str())
+#define UNIMPLEMENTED_FUNC(module) module.Error("Unimplemented function: %s", __FUNCTION__)
 
 #define SC_ARG_0 CPU.GPR[3]
 #define SC_ARG_1 CPU.GPR[4]
@@ -464,6 +466,12 @@ public:
 
 //extern SysCalls SysCallsManager;
 
-void StaticAnalyse(void* ptr, u32 size);
+void StaticAnalyse(void* ptr, u32 size, u32 base);
 void StaticExecute(u32 code);
 void StaticFinalize();
+
+#define REG_SUB(module, group, name,...) \
+	static const u64 name ## _table[] = {__VA_ARGS__ ## 0}; \
+	module.AddFuncSub(group, name ## _table, #name, name)
+
+extern u64 get_system_time();

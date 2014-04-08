@@ -3,6 +3,7 @@
 #include "CompilerELF.h"
 #include "MemoryViewer.h"
 #include "RSXDebugger.h"
+#include "PADManager.h"
 
 #include "git-version.h"
 #include "Ini.h"
@@ -36,26 +37,6 @@ enum IDs
 	id_tools_rsx_debugger,
 	id_help_about,
 	id_update_dbg,
-};
-
-enum PadIDs
-{
-	id_pad_left,
-	id_pad_down,
-	id_pad_right,
-	id_pad_up,
-	id_pad_start,
-	id_pad_r3,
-	id_pad_l3,
-	id_pad_select,
-	id_pad_square,
-	id_pad_cross,
-	id_pad_circle,
-	id_pad_triangle,
-	id_pad_r1,
-	id_pad_l1,
-	id_pad_r2,
-	id_pad_l2,
 };
 
 wxString GetPaneName()
@@ -124,13 +105,13 @@ MainFrame::MainFrame()
 	AddPane(m_debugger_frame, "Debugger", wxAUI_DOCK_RIGHT);
 	
 	// Events
-	Connect( id_boot_game,			 wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::BootGame) );
-	Connect( id_install_pkg,		 wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::InstallPkg) );
-	Connect( id_boot_elf,			 wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::BootElf) );
+	Connect( id_boot_game,           wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::BootGame) );
+	Connect( id_install_pkg,         wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::InstallPkg) );
+	Connect( id_boot_elf,            wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::BootElf) );
 
 	Connect( id_sys_pause,           wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::Pause) );
 	Connect( id_sys_stop,            wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::Stop) );
-	Connect( id_sys_send_open_menu,	 wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::SendOpenCloseSysMenu) );
+	Connect( id_sys_send_open_menu,  wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::SendOpenCloseSysMenu) );
 	Connect( id_sys_send_exit,       wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::SendExit) );
 
 	Connect( id_config_emu,          wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::Config) );
@@ -138,7 +119,7 @@ MainFrame::MainFrame()
 	Connect( id_config_vfs_manager,  wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::ConfigVFS) );
 	Connect( id_config_vhdd_manager, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::ConfigVHDD) );
 
-	Connect( id_tools_compiler,		 wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::OpenELFCompiler));
+	Connect( id_tools_compiler,      wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::OpenELFCompiler));
 	Connect( id_tools_memory_viewer, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::OpenMemoryViewer));
 	Connect( id_tools_rsx_debugger,  wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(MainFrame::OpenRSXDebugger));
 
@@ -163,16 +144,16 @@ void MainFrame::AddPane(wxWindow* wind, const wxString& caption, int flags)
 
 void MainFrame::DoSettings(bool load)
 {
-	IniEntry<wxString> ini;
+	IniEntry<std::string> ini;
 	ini.Init("Settings", "MainFrameAui");
 
 	if(load)
 	{
-		m_aui_mgr.LoadPerspective(ini.LoadValue(m_aui_mgr.SavePerspective()));
+		m_aui_mgr.LoadPerspective(fmt::FromUTF8(ini.LoadValue(fmt::ToUTF8(m_aui_mgr.SavePerspective()))));
 	}
 	else
 	{
-		ini.SaveValue(m_aui_mgr.SavePerspective());
+		ini.SaveValue(fmt::ToUTF8(m_aui_mgr.SavePerspective()));
 	}
 }
 
@@ -228,7 +209,7 @@ void MainFrame::InstallPkg(wxCommandEvent& WXUNUSED(event))
 	Emu.Stop();
 	
 	// Open and install PKG file
-	std::string filePath = ctrl.GetPath().ToStdString();
+	wxString filePath = ctrl.GetPath();
 	wxFile pkg_f(filePath, wxFile::read); // TODO: Use VFS to install PKG files
 
 	if (pkg_f.IsOpened())
@@ -271,7 +252,7 @@ void MainFrame::BootElf(wxCommandEvent& WXUNUSED(event))
 
 	Emu.Stop();
 
-	Emu.SetPath(ctrl.GetPath());
+	Emu.SetPath(fmt::ToUTF8(ctrl.GetPath()));
 	Emu.Load();
 
 	ConLog.Success("(S)ELF: boot done.");
@@ -313,8 +294,6 @@ void MainFrame::SendOpenCloseSysMenu(wxCommandEvent& event)
 
 void MainFrame::Config(wxCommandEvent& WXUNUSED(event))
 {
-	//TODO
-
 	bool paused = false;
 
 	if(Emu.IsRunning())
@@ -324,54 +303,75 @@ void MainFrame::Config(wxCommandEvent& WXUNUSED(event))
 	}
 
 	wxDialog diag(this, wxID_ANY, "Settings", wxDefaultPosition);
+	static const u32 height = 400;
+	static const u32 width = 385;
 
-	wxBoxSizer* s_panel(new wxBoxSizer(wxHORIZONTAL));
-	wxBoxSizer* s_subpanel1(new wxBoxSizer(wxVERTICAL));
-	wxBoxSizer* s_subpanel2(new wxBoxSizer(wxVERTICAL));
-	wxBoxSizer* s_subpanel3(new wxBoxSizer(wxVERTICAL));
+	// Settings panels
+	wxNotebook* nb_config = new wxNotebook(&diag, wxID_ANY, wxPoint(6,6), wxSize(width, height));
+	wxPanel* p_system     = new wxPanel(nb_config, wxID_ANY);
+	wxPanel* p_cpu        = new wxPanel(nb_config, wxID_ANY);
+	wxPanel* p_graphics   = new wxPanel(nb_config, wxID_ANY);
+	wxPanel* p_audio      = new wxPanel(nb_config, wxID_ANY);
+	wxPanel* p_io         = new wxPanel(nb_config, wxID_ANY);
+	wxPanel* p_hle        = new wxPanel(nb_config, wxID_ANY);
 
-	wxStaticBoxSizer* s_round_cpu( new wxStaticBoxSizer( wxVERTICAL, &diag, _("CPU") ) );
-	wxStaticBoxSizer* s_round_cpu_decoder( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Decoder") ) );
+	nb_config->AddPage(p_cpu,      wxT("Core"));
+	nb_config->AddPage(p_graphics, wxT("Graphics"));
+	nb_config->AddPage(p_audio,    wxT("Audio"));
+	nb_config->AddPage(p_io,       wxT("Input / Output"));
+	nb_config->AddPage(p_hle,      wxT("HLE / Misc."));
+	nb_config->AddPage(p_system,   wxT("System"));
 
-	wxStaticBoxSizer* s_round_gs( new wxStaticBoxSizer( wxVERTICAL, &diag, _("GS") ) );
-	wxStaticBoxSizer* s_round_gs_render( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Render") ) );
-	wxStaticBoxSizer* s_round_gs_res( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Default resolution") ) );
-	wxStaticBoxSizer* s_round_gs_aspect( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Default aspect ratio") ) );
+	wxBoxSizer* s_subpanel_system(new wxBoxSizer(wxVERTICAL));
+	wxBoxSizer* s_subpanel_cpu(new wxBoxSizer(wxVERTICAL));
+	wxBoxSizer* s_subpanel_graphics(new wxBoxSizer(wxVERTICAL));
+	wxBoxSizer* s_subpanel_audio(new wxBoxSizer(wxVERTICAL));
+	wxBoxSizer* s_subpanel_io(new wxBoxSizer(wxVERTICAL));
+	wxBoxSizer* s_subpanel_hle(new wxBoxSizer(wxVERTICAL));
 
-	wxStaticBoxSizer* s_round_io( new wxStaticBoxSizer( wxVERTICAL, &diag, _("IO") ) );
-	wxStaticBoxSizer* s_round_io_pad_handler( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Pad Handler") ) );
-	wxStaticBoxSizer* s_round_io_keyboard_handler( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Keyboard Handler") ) );
-	wxStaticBoxSizer* s_round_io_mouse_handler( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Mouse Handler") ) );
+	// CPU settings
+	wxStaticBoxSizer* s_round_cpu_decoder( new wxStaticBoxSizer( wxVERTICAL, p_cpu, _("Decoder") ) );
+
+	// Graphics
+	wxStaticBoxSizer* s_round_gs_render( new wxStaticBoxSizer( wxVERTICAL, p_graphics, _("Render") ) );
+	wxStaticBoxSizer* s_round_gs_res( new wxStaticBoxSizer( wxVERTICAL, p_graphics, _("Default resolution") ) );
+	wxStaticBoxSizer* s_round_gs_aspect( new wxStaticBoxSizer( wxVERTICAL, p_graphics, _("Default aspect ratio") ) );
+
+	// Input / Output
+	wxStaticBoxSizer* s_round_io_pad_handler( new wxStaticBoxSizer( wxVERTICAL, p_io, _("Pad Handler") ) );
+	wxStaticBoxSizer* s_round_io_keyboard_handler( new wxStaticBoxSizer( wxVERTICAL, p_io, _("Keyboard Handler") ) );
+	wxStaticBoxSizer* s_round_io_mouse_handler( new wxStaticBoxSizer( wxVERTICAL, p_io, _("Mouse Handler") ) );
 	
-	wxStaticBoxSizer* s_round_audio( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Audio") ) );
-	wxStaticBoxSizer* s_round_audio_out( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Audio Out") ) );
+	// Audio
+	wxStaticBoxSizer* s_round_audio_out( new wxStaticBoxSizer( wxVERTICAL, p_audio, _("Audio Out") ) );
 
-	wxStaticBoxSizer* s_round_hle( new wxStaticBoxSizer( wxVERTICAL, &diag, _("HLE / Misc.") ) );
-	wxStaticBoxSizer* s_round_hle_log_lvl( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Log lvl") ) );
+	// HLE / Misc.
+	wxStaticBoxSizer* s_round_hle_log_lvl( new wxStaticBoxSizer( wxVERTICAL, p_hle, _("Log lvl") ) );
 
-	wxStaticBoxSizer* s_round_sys( new wxStaticBoxSizer( wxVERTICAL, &diag, _("System") ) );
-	wxStaticBoxSizer* s_round_sys_lang( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Language") ) );
+	// System
+	wxStaticBoxSizer* s_round_sys_lang( new wxStaticBoxSizer( wxVERTICAL, p_system, _("Language") ) );
 
-	wxComboBox* cbox_cpu_decoder = new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_gs_render = new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_gs_resolution = new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_gs_aspect = new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_handler = new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_keyboard_handler = new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_mouse_handler = new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_audio_out = new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_hle_loglvl = new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_sys_lang = new wxComboBox(&diag, wxID_ANY);
+	wxComboBox* cbox_cpu_decoder = new wxComboBox(p_cpu, wxID_ANY);
+	wxComboBox* cbox_gs_render = new wxComboBox(p_graphics, wxID_ANY);
+	wxComboBox* cbox_gs_resolution = new wxComboBox(p_graphics, wxID_ANY);
+	wxComboBox* cbox_gs_aspect = new wxComboBox(p_graphics, wxID_ANY);
+	wxComboBox* cbox_pad_handler = new wxComboBox(p_io, wxID_ANY);
+	wxComboBox* cbox_keyboard_handler = new wxComboBox(p_io, wxID_ANY);
+	wxComboBox* cbox_mouse_handler = new wxComboBox(p_io, wxID_ANY);
+	wxComboBox* cbox_audio_out = new wxComboBox(p_audio, wxID_ANY);
+	wxComboBox* cbox_hle_loglvl = new wxComboBox(p_hle, wxID_ANY);
+	wxComboBox* cbox_sys_lang = new wxComboBox(p_system, wxID_ANY);
 
-	wxCheckBox* chbox_cpu_ignore_rwerrors = new wxCheckBox(&diag, wxID_ANY, "Ignore Read/Write errors");
-	wxCheckBox* chbox_gs_log_prog   = new wxCheckBox(&diag, wxID_ANY, "Log vertex/fragment programs");
-	wxCheckBox* chbox_gs_dump_depth = new wxCheckBox(&diag, wxID_ANY, "Write Depth Buffer");
-	wxCheckBox* chbox_gs_dump_color = new wxCheckBox(&diag, wxID_ANY, "Write Color Buffers");
-	wxCheckBox* chbox_gs_vsync = new wxCheckBox(&diag, wxID_ANY, "VSync");
-	wxCheckBox* chbox_audio_dump = new wxCheckBox(&diag, wxID_ANY, "Dump to file");
-	wxCheckBox* chbox_hle_logging = new wxCheckBox(&diag, wxID_ANY, "Log all SysCalls");
-	wxCheckBox* chbox_hle_savetty = new wxCheckBox(&diag, wxID_ANY, "Save TTY output to file");
-	wxCheckBox* chbox_hle_exitonstop = new wxCheckBox(&diag, wxID_ANY, "Exit RPCS3 when process finishes");
+	wxCheckBox* chbox_cpu_ignore_rwerrors = new wxCheckBox(p_cpu, wxID_ANY, "Ignore Read/Write errors");
+	wxCheckBox* chbox_gs_log_prog   = new wxCheckBox(p_graphics, wxID_ANY, "Log vertex/fragment programs");
+	wxCheckBox* chbox_gs_dump_depth = new wxCheckBox(p_graphics, wxID_ANY, "Write Depth Buffer");
+	wxCheckBox* chbox_gs_dump_color = new wxCheckBox(p_graphics, wxID_ANY, "Write Color Buffers");
+	wxCheckBox* chbox_gs_vsync = new wxCheckBox(p_graphics, wxID_ANY, "VSync");
+	wxCheckBox* chbox_audio_dump = new wxCheckBox(p_audio, wxID_ANY, "Dump to file");
+	wxCheckBox* chbox_hle_logging = new wxCheckBox(p_hle, wxID_ANY, "Log all SysCalls");
+	wxCheckBox* chbox_hle_hook_stfunc = new wxCheckBox(p_hle, wxID_ANY, "Hook static functions");
+	wxCheckBox* chbox_hle_savetty = new wxCheckBox(p_hle, wxID_ANY, "Save TTY output to file");
+	wxCheckBox* chbox_hle_exitonstop = new wxCheckBox(p_hle, wxID_ANY, "Exit RPCS3 when process finishes");
 
 	//cbox_cpu_decoder->Append("DisAsm");
 	cbox_cpu_decoder->Append("Interpreter & DisAsm");
@@ -379,7 +379,7 @@ void MainFrame::Config(wxCommandEvent& WXUNUSED(event))
 
 	for(int i=1; i<WXSIZEOF(ResolutionTable); ++i)
 	{
-		cbox_gs_resolution->Append(wxString::Format("%dx%d", ResolutionTable[i].width, ResolutionTable[i].height));
+		cbox_gs_resolution->Append(wxString::Format("%dx%d", ResolutionTable[i].width.ToLE(), ResolutionTable[i].height.ToLE()));
 	}
 
 	cbox_gs_aspect->Append("4:3");
@@ -429,6 +429,8 @@ void MainFrame::Config(wxCommandEvent& WXUNUSED(event))
 	cbox_sys_lang->Append("Polish");
 	cbox_sys_lang->Append("English (UK)");
 
+
+	// Get values from .ini
 	chbox_cpu_ignore_rwerrors->SetValue(Ini.CPUIgnoreRWErrors.GetValue());
 	chbox_gs_log_prog->SetValue(Ini.GSLogPrograms.GetValue());
 	chbox_gs_dump_depth->SetValue(Ini.GSDumpDepthBuffer.GetValue());
@@ -436,12 +438,9 @@ void MainFrame::Config(wxCommandEvent& WXUNUSED(event))
 	chbox_gs_vsync->SetValue(Ini.GSVSyncEnable.GetValue());
 	chbox_audio_dump->SetValue(Ini.AudioDumpToFile.GetValue());
 	chbox_hle_logging->SetValue(Ini.HLELogging.GetValue());
+	chbox_hle_hook_stfunc->SetValue(Ini.HLEHookStFunc.GetValue());
 	chbox_hle_savetty->SetValue(Ini.HLESaveTTY.GetValue());
 	chbox_hle_exitonstop->SetValue(Ini.HLEExitOnStop.GetValue());
-
-	chbox_audio_dump->Enable(Emu.IsStopped());
-	//cbox_audio_out->Enable(Emu.IsStopped());
-	chbox_hle_logging->Enable(Emu.IsStopped());
 
 	cbox_cpu_decoder->SetSelection(Ini.CPUDecoderMode.GetValue() ? Ini.CPUDecoderMode.GetValue() - 1 : 0);
 	cbox_gs_render->SetSelection(Ini.GSRenderMode.GetValue());
@@ -453,63 +452,78 @@ void MainFrame::Config(wxCommandEvent& WXUNUSED(event))
 	cbox_audio_out->SetSelection(Ini.AudioOutMode.GetValue());
 	cbox_hle_loglvl->SetSelection(Ini.HLELogLvl.GetValue());
 	cbox_sys_lang->SetSelection(Ini.SysLanguage.GetValue());
+	
+
+	// Enable / Disable parameters
+	chbox_audio_dump->Enable(Emu.IsStopped());
+	chbox_hle_logging->Enable(Emu.IsStopped());
+	chbox_hle_hook_stfunc->Enable(Emu.IsStopped());
+
 
 	s_round_cpu_decoder->Add(cbox_cpu_decoder, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_cpu->Add(s_round_cpu_decoder, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_cpu->Add(chbox_cpu_ignore_rwerrors, wxSizerFlags().Border(wxALL, 5).Expand());
 
 	s_round_gs_render->Add(cbox_gs_render, wxSizerFlags().Border(wxALL, 5).Expand());
 	s_round_gs_res->Add(cbox_gs_resolution, wxSizerFlags().Border(wxALL, 5).Expand());
 	s_round_gs_aspect->Add(cbox_gs_aspect, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_gs->Add(s_round_gs_render, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_gs->Add(s_round_gs_res, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_gs->Add(s_round_gs_aspect, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_gs->Add(chbox_gs_log_prog, wxSizerFlags().Border(wxALL, 5));
-	s_round_gs->Add(chbox_gs_dump_depth, wxSizerFlags().Border(wxALL, 5));
-	s_round_gs->Add(chbox_gs_dump_color, wxSizerFlags().Border(wxALL, 5));
-	s_round_gs->Add(chbox_gs_vsync, wxSizerFlags().Border(wxALL, 5));
 
 	s_round_io_pad_handler->Add(cbox_pad_handler, wxSizerFlags().Border(wxALL, 5).Expand());
 	s_round_io_keyboard_handler->Add(cbox_keyboard_handler, wxSizerFlags().Border(wxALL, 5).Expand());
 	s_round_io_mouse_handler->Add(cbox_mouse_handler, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_io->Add(s_round_io_pad_handler, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_io->Add(s_round_io_keyboard_handler, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_io->Add(s_round_io_mouse_handler, wxSizerFlags().Border(wxALL, 5).Expand());
 
 	s_round_audio_out->Add(cbox_audio_out, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_audio_out->Add(chbox_audio_dump, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_audio->Add(s_round_audio_out, wxSizerFlags().Border(wxALL, 5).Expand());
 
 	s_round_hle_log_lvl->Add(cbox_hle_loglvl, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_hle->Add(s_round_hle_log_lvl, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_hle->Add(chbox_hle_logging, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_hle->Add(chbox_hle_savetty, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_hle->Add(chbox_hle_exitonstop, wxSizerFlags().Border(wxALL, 5).Expand());
 
 	s_round_sys_lang->Add(cbox_sys_lang, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_sys->Add(s_round_sys_lang, wxSizerFlags().Border(wxALL, 5).Expand());
 
-	wxBoxSizer* s_b_panel(new wxBoxSizer(wxHORIZONTAL));
+	// Core
+	s_subpanel_cpu->Add(s_round_cpu_decoder, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_cpu->Add(chbox_cpu_ignore_rwerrors, wxSizerFlags().Border(wxALL, 5).Expand());
 
-	s_b_panel->Add(new wxButton(&diag, wxID_OK), wxSizerFlags().Border(wxALL, 5).Center());
-	s_b_panel->Add(new wxButton(&diag, wxID_CANCEL), wxSizerFlags().Border(wxALL, 5).Center());
+	// Graphics
+	s_subpanel_graphics->Add(s_round_gs_render, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_graphics->Add(s_round_gs_res, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_graphics->Add(s_round_gs_aspect, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_graphics->Add(chbox_gs_log_prog, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_graphics->Add(chbox_gs_dump_depth, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_graphics->Add(chbox_gs_dump_color, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_graphics->Add(chbox_gs_vsync, wxSizerFlags().Border(wxALL, 5).Expand());
 
-	//wxBoxSizer* s_conf_panel(new wxBoxSizer(wxHORIZONTAL));
+	// Input - Output
+	s_subpanel_io->Add(s_round_io_pad_handler, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_io->Add(s_round_io_keyboard_handler, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_io->Add(s_round_io_mouse_handler, wxSizerFlags().Border(wxALL, 5).Expand());
 
-	s_subpanel1->Add(s_round_cpu, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_subpanel1->Add(s_round_gs, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_subpanel1->Add(s_b_panel, wxSizerFlags().Border(wxALL, 8).Expand());
-	s_subpanel2->Add(s_round_io, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_subpanel2->Add(s_round_audio, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_subpanel2->Add(s_round_hle, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_subpanel3->Add(s_round_sys, wxSizerFlags().Border(wxALL, 5).Expand());
+	// Audio
+	s_subpanel_audio->Add(s_round_audio_out, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_audio->Add(chbox_audio_dump, wxSizerFlags().Border(wxALL, 5).Expand());
 
-	s_panel->Add(s_subpanel1, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_panel->Add(s_subpanel2, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_panel->Add(s_subpanel3, wxSizerFlags().Border(wxALL, 5).Expand());
+	// HLE / Misc.
+	s_subpanel_hle->Add(s_round_hle_log_lvl, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_hle->Add(chbox_hle_logging, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_hle->Add(chbox_hle_hook_stfunc, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_hle->Add(chbox_hle_savetty, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_hle->Add(chbox_hle_exitonstop, wxSizerFlags().Border(wxALL, 5).Expand());
 
-	diag.SetSizerAndFit( s_panel );
+	// System
+	s_subpanel_system->Add(s_round_sys_lang, wxSizerFlags().Border(wxALL, 5).Expand());
 	
+	// Buttons
+	wxBoxSizer* s_b_panel(new wxBoxSizer(wxHORIZONTAL));
+	s_b_panel->Add(new wxButton(&diag, wxID_OK), wxSizerFlags().Border(wxALL, 5).Bottom());
+	s_b_panel->Add(new wxButton(&diag, wxID_CANCEL), wxSizerFlags().Border(wxALL, 5).Bottom());
+
+	// Resize panels 
+	diag.SetSizerAndFit(s_subpanel_cpu, false);
+	diag.SetSizerAndFit(s_subpanel_graphics, false);
+	diag.SetSizerAndFit(s_subpanel_io, false);
+	diag.SetSizerAndFit(s_subpanel_audio, false);
+	diag.SetSizerAndFit(s_subpanel_hle, false);
+	diag.SetSizerAndFit(s_subpanel_system, false);
+	diag.SetSizerAndFit(s_b_panel, false);
+	
+	diag.SetSize(width+26, height+80);
+
 	if(diag.ShowModal() == wxID_OK)
 	{
 		Ini.CPUDecoderMode.SetValue(cbox_cpu_decoder->GetSelection() + 1);
@@ -527,6 +541,7 @@ void MainFrame::Config(wxCommandEvent& WXUNUSED(event))
 		Ini.AudioOutMode.SetValue(cbox_audio_out->GetSelection());
 		Ini.AudioDumpToFile.SetValue(chbox_audio_dump->GetValue());
 		Ini.HLELogging.SetValue(chbox_hle_logging->GetValue());
+		Ini.HLEHookStFunc.SetValue(chbox_hle_hook_stfunc->GetValue());
 		Ini.HLESaveTTY.SetValue(chbox_hle_savetty->GetValue());
 		Ini.HLEExitOnStop.SetValue(chbox_hle_exitonstop->GetValue());
 		Ini.HLELogLvl.SetValue(cbox_hle_loglvl->GetSelection());
@@ -540,189 +555,7 @@ void MainFrame::Config(wxCommandEvent& WXUNUSED(event))
 
 void MainFrame::ConfigPad(wxCommandEvent& WXUNUSED(event))
 {
-	bool paused = false;
-
-	if(Emu.IsRunning())
-	{
-		Emu.Pause();
-		paused = true;
-	}
-
-	wxDialog diag(this, wxID_ANY, "PAD Settings", wxDefaultPosition);
-
-	wxBoxSizer* s_panel(new wxBoxSizer(wxHORIZONTAL));
-	wxBoxSizer* s_subpanel1(new wxBoxSizer(wxVERTICAL));
-	wxBoxSizer* s_subpanel2(new wxBoxSizer(wxVERTICAL));
-	wxBoxSizer* s_subpanel3(new wxBoxSizer(wxVERTICAL));
-	wxBoxSizer* s_subpanel4(new wxBoxSizer(wxVERTICAL));
-	wxBoxSizer* s_subpanel5(new wxBoxSizer(wxVERTICAL));
-
-	wxStaticBoxSizer* s_round_pad_controls( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Controls") ) );
-	wxStaticBoxSizer* s_round_pad_left(		new wxStaticBoxSizer( wxVERTICAL, &diag, _("LEFT") ) );
-	wxStaticBoxSizer* s_round_pad_down(		new wxStaticBoxSizer( wxVERTICAL, &diag, _("DOWN") ) );
-	wxStaticBoxSizer* s_round_pad_right(	new wxStaticBoxSizer( wxVERTICAL, &diag, _("RIGHT") ) );
-	wxStaticBoxSizer* s_round_pad_up(		new wxStaticBoxSizer( wxVERTICAL, &diag, _("UP") ) );
-
-	wxStaticBoxSizer* s_round_pad_shifts_l( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Shifts") ) );
-	wxStaticBoxSizer* s_round_pad_l1(		new wxStaticBoxSizer( wxVERTICAL, &diag, _("L1") ) );
-	wxStaticBoxSizer* s_round_pad_l2(		new wxStaticBoxSizer( wxVERTICAL, &diag, _("L2") ) );
-	wxStaticBoxSizer* s_round_pad_l3(		new wxStaticBoxSizer( wxVERTICAL, &diag, _("L3") ) );
-
-	wxStaticBoxSizer* s_round_pad_system(	new wxStaticBoxSizer( wxVERTICAL, &diag, _("System") ) );
-	wxStaticBoxSizer* s_round_pad_select(	new wxStaticBoxSizer( wxVERTICAL, &diag, _("SELECT") ) );
-	wxStaticBoxSizer* s_round_pad_start(	new wxStaticBoxSizer( wxVERTICAL, &diag, _("START") ) );
-
-	wxStaticBoxSizer* s_round_pad_shifts_r( new wxStaticBoxSizer( wxVERTICAL, &diag, _("Shifts") ) );
-	wxStaticBoxSizer* s_round_pad_r1(		new wxStaticBoxSizer( wxVERTICAL, &diag, _("R1") ) );
-	wxStaticBoxSizer* s_round_pad_r2(		new wxStaticBoxSizer( wxVERTICAL, &diag, _("R2") ) );
-	wxStaticBoxSizer* s_round_pad_r3(		new wxStaticBoxSizer( wxVERTICAL, &diag, _("R3") ) );
-
-	wxStaticBoxSizer* s_round_pad_buttons(	new wxStaticBoxSizer( wxVERTICAL, &diag, _("Buttons") ) );
-	wxStaticBoxSizer* s_round_pad_square(	new wxStaticBoxSizer( wxVERTICAL, &diag, _("SQUARE") ) );
-	wxStaticBoxSizer* s_round_pad_cross(	new wxStaticBoxSizer( wxVERTICAL, &diag, _("CROSS") ) );
-	wxStaticBoxSizer* s_round_pad_circle(	new wxStaticBoxSizer( wxVERTICAL, &diag, _("CIRCLE") ) );
-	wxStaticBoxSizer* s_round_pad_triangle( new wxStaticBoxSizer( wxVERTICAL, &diag, _("TRIANGLE") ) );
-
-
-	wxComboBox* cbox_pad_left =		new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_down =		new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_right =	new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_up =		new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_start =	new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_r3 =		new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_l3 =		new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_select =	new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_square =	new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_cross =	new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_circle =	new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_triangle = new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_r1 =		new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_l1 =		new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_r2 =		new wxComboBox(&diag, wxID_ANY);
-	wxComboBox* cbox_pad_l2 =		new wxComboBox(&diag, wxID_ANY);
-
-	for(int i=0; i<128; i++)
-	{
-		cbox_pad_left->Append		(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_down->Append		(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_right->Append		(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_up->Append			(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_r3->Append			(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_l3->Append			(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_square->Append		(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_cross->Append		(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_circle->Append		(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_triangle->Append	(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_r1->Append			(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_l1->Append			(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_r2->Append			(wxString::Format("%c", static_cast<char>(i) ) );
-		cbox_pad_l2->Append			(wxString::Format("%c", static_cast<char>(i) ) );
-	}
-
-	cbox_pad_start->Append("Enter");
-	cbox_pad_select->Append("Space");
-
-	cbox_pad_left->SetSelection		(Ini.PadHandlerLeft.GetValue());
-	cbox_pad_down->SetSelection		(Ini.PadHandlerDown.GetValue());
-	cbox_pad_right->SetSelection	(Ini.PadHandlerRight.GetValue());
-	cbox_pad_up->SetSelection		(Ini.PadHandlerUp.GetValue());
-	cbox_pad_start->SetSelection	(Ini.PadHandlerStart.GetValue());
-	cbox_pad_r3->SetSelection		(Ini.PadHandlerR3.GetValue());
-	cbox_pad_l3->SetSelection		(Ini.PadHandlerL3.GetValue());
-	cbox_pad_select->SetSelection	(Ini.PadHandlerSelect.GetValue());
-	cbox_pad_square->SetSelection	(Ini.PadHandlerSquare.GetValue());
-	cbox_pad_cross->SetSelection	(Ini.PadHandlerCross.GetValue());
-	cbox_pad_circle->SetSelection	(Ini.PadHandlerCircle.GetValue());
-	cbox_pad_triangle->SetSelection	(Ini.PadHandlerTriangle.GetValue());
-	cbox_pad_r1->SetSelection		(Ini.PadHandlerR1.GetValue());
-	cbox_pad_l1->SetSelection		(Ini.PadHandlerL1.GetValue());
-	cbox_pad_r2->SetSelection		(Ini.PadHandlerR2.GetValue());
-	cbox_pad_l2->SetSelection		(Ini.PadHandlerL2.GetValue());
-
-	s_round_pad_left->Add(cbox_pad_left, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_down->Add(cbox_pad_down, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_right->Add(cbox_pad_right, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_up->Add(cbox_pad_up, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_start->Add(cbox_pad_start, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_r3->Add(cbox_pad_r3, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_l3->Add(cbox_pad_l3, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_select->Add(cbox_pad_select, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_square->Add(cbox_pad_square, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_cross->Add(cbox_pad_cross, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_circle->Add(cbox_pad_circle, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_triangle->Add(cbox_pad_triangle, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_r1->Add(cbox_pad_r1, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_l1->Add(cbox_pad_l1, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_r2->Add(cbox_pad_r2, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_l2->Add(cbox_pad_l2, wxSizerFlags().Border(wxALL, 5).Expand());
-
-
-	s_round_pad_controls->Add(s_round_pad_left, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_controls->Add(s_round_pad_down, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_controls->Add(s_round_pad_right, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_controls->Add(s_round_pad_up, wxSizerFlags().Border(wxALL, 5).Expand());
-
-	
-	s_round_pad_shifts_l->Add(s_round_pad_l1, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_shifts_l->Add(s_round_pad_l2, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_shifts_l->Add(s_round_pad_l3, wxSizerFlags().Border(wxALL, 5).Expand());
-
-	s_round_pad_system->Add(s_round_pad_start, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_system->Add(s_round_pad_select, wxSizerFlags().Border(wxALL, 5).Expand());
-
-	s_round_pad_shifts_r->Add(s_round_pad_r1, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_shifts_r->Add(s_round_pad_r2, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_shifts_r->Add(s_round_pad_r3, wxSizerFlags().Border(wxALL, 5).Expand());
-
-
-	s_round_pad_buttons->Add(s_round_pad_square, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_buttons->Add(s_round_pad_cross, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_buttons->Add(s_round_pad_circle, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_round_pad_buttons->Add(s_round_pad_triangle, wxSizerFlags().Border(wxALL, 5).Expand());
-
-	wxBoxSizer* s_b_panel(new wxBoxSizer(wxHORIZONTAL));
-
-	s_b_panel->Add(new wxButton(&diag, wxID_OK), wxSizerFlags().Border(wxALL, 5).Center());
-	s_b_panel->Add(new wxButton(&diag, wxID_CANCEL), wxSizerFlags().Border(wxALL, 5).Center());
-
-	s_subpanel1->Add(s_round_pad_controls, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_subpanel2->Add(s_round_pad_shifts_l, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_subpanel3->Add(s_round_pad_system, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_subpanel3->Add(s_b_panel, wxSizerFlags().Border(wxALL, 8).Expand());
-	s_subpanel4->Add(s_round_pad_shifts_r, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_subpanel5->Add(s_round_pad_buttons, wxSizerFlags().Border(wxALL, 5).Expand());
-
-	s_panel->Add(s_subpanel1, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_panel->Add(s_subpanel2, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_panel->Add(s_subpanel3, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_panel->Add(s_subpanel4, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_panel->Add(s_subpanel5, wxSizerFlags().Border(wxALL, 5).Expand());
-
-	diag.SetSizerAndFit( s_panel );
-	
-	if(diag.ShowModal() == wxID_OK)
-	{
-		Ini.PadHandlerLeft.SetValue(cbox_pad_left->GetSelection());
-		Ini.PadHandlerDown.SetValue(cbox_pad_down->GetSelection());
-		Ini.PadHandlerRight.SetValue(cbox_pad_right->GetSelection());
-		Ini.PadHandlerUp.SetValue(cbox_pad_up->GetSelection());
-		Ini.PadHandlerStart.SetValue(cbox_pad_start->GetSelection());
-		Ini.PadHandlerR3.SetValue(cbox_pad_r3->GetSelection());
-		Ini.PadHandlerL3.SetValue(cbox_pad_l3->GetSelection());
-		Ini.PadHandlerSelect.SetValue(cbox_pad_select->GetSelection());
-		Ini.PadHandlerSquare.SetValue(cbox_pad_square->GetSelection());
-		Ini.PadHandlerCross.SetValue(cbox_pad_cross->GetSelection());
-		Ini.PadHandlerCircle.SetValue(cbox_pad_circle->GetSelection());
-		Ini.PadHandlerTriangle.SetValue(cbox_pad_triangle->GetSelection());
-		Ini.PadHandlerR1.SetValue(cbox_pad_r1->GetSelection());
-		Ini.PadHandlerL1.SetValue(cbox_pad_l1->GetSelection());
-		Ini.PadHandlerR2.SetValue(cbox_pad_r2->GetSelection());
-		Ini.PadHandlerL2.SetValue(cbox_pad_l2->GetSelection());
-
-		Ini.Save();
-	}
-
-	if(paused) Emu.Resume();
+	PADManager(this).ShowModal();
 }
 
 void MainFrame::ConfigVFS(wxCommandEvent& WXUNUSED(event))
@@ -828,7 +661,7 @@ void MainFrame::UpdateUI(wxCommandEvent& event)
 	//send_exit.Enable(false);
 	bool enable_commands = !is_stopped && Emu.GetCallbackManager().m_exit_callback.m_callbacks.GetCount();
 
-	send_open_menu.SetItemLabel(wxString::Format("Send %s system menu cmd", wxString(m_sys_menu_opened ? "close" : "open").wx_str()));
+	send_open_menu.SetItemLabel(wxString::Format("Send %s system menu cmd", (m_sys_menu_opened ? "close" : "open")));
 	send_open_menu.Enable(enable_commands);
 	send_exit.Enable(enable_commands);
 
@@ -853,7 +686,7 @@ void MainFrame::OnKeyDown(wxKeyEvent& event)
 		case 'E': case 'e': if(Emu.IsPaused()) Emu.Resume(); else if(Emu.IsReady()) Emu.Run(); return;
 		case 'P': case 'p': if(Emu.IsRunning()) Emu.Pause(); return;
 		case 'S': case 's': if(!Emu.IsStopped()) Emu.Stop(); return;
-		case 'R': case 'r': if(!Emu.m_path.IsEmpty()) {Emu.Stop(); Emu.Run();} return;
+		case 'R': case 'r': if(!Emu.m_path.empty()) {Emu.Stop(); Emu.Run();} return;
 		}
 	}
 

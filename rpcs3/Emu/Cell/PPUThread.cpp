@@ -10,7 +10,7 @@ PPUThread& GetCurrentPPUThread()
 {
 	PPCThread* thread = GetCurrentPPCThread();
 
-	if(!thread || thread->GetType() != CPU_THREAD_PPU) throw wxString("GetCurrentPPUThread: bad thread");
+	if(!thread || thread->GetType() != CPU_THREAD_PPU) throw std::string("GetCurrentPPUThread: bad thread");
 
 	return *(PPUThread*)thread;
 }
@@ -30,26 +30,26 @@ void PPUThread::DoReset()
 	PPCThread::DoReset();
 
 	//reset regs
-	memset(VPR,	 0, sizeof(VPR));
+	memset(VPR,  0, sizeof(VPR));
 	memset(FPR,  0, sizeof(FPR));
 	memset(GPR,  0, sizeof(GPR));
 	memset(SPRG, 0, sizeof(SPRG));
-	
-	CR.CR		= 0;
-	LR			= 0;
-	CTR			= 0;
-	USPRG0		= 0;
-	TB			= 0;
-	XER.XER		= 0;
-	FPSCR.FPSCR	= 0;
-	VSCR.VSCR	= 0;
+
+	CR.CR       = 0;
+	LR          = 0;
+	CTR         = 0;
+	USPRG0      = 0;
+	TB          = 0;
+	XER.XER     = 0;
+	FPSCR.FPSCR = 0;
+	VSCR.VSCR   = 0;
 
 	cycle = 0;
 }
 
-void PPUThread::AddArgv(const wxString& arg)
+void PPUThread::AddArgv(const std::string& arg)
 {
-	m_stack_point -= arg.Len() + 1;
+	m_stack_point -= arg.length() + 1;
 	m_stack_point = Memory.AlignAddr(m_stack_point, 0x10) - 0x10;
 	m_argv_addr.AddCpy(m_stack_point);
 	Memory.WriteString(m_stack_point, arg);
@@ -165,11 +165,8 @@ void PPUThread::DoPause()
 
 void PPUThread::DoStop()
 {
-	if(m_dec)
-	{
-		delete m_dec;
-		m_dec = nullptr;
-	}
+	delete m_dec;
+	m_dec = nullptr;
 }
 
 bool dump_enable = false;

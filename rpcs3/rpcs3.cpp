@@ -7,6 +7,10 @@
 #include <wx/msw/wrapwin.h>
 #endif
 
+#ifdef __UNIX__
+#include <X11/Xlib.h>
+#endif
+
 const wxEventType wxEVT_DBG_COMMAND = wxNewEventType();
 
 IMPLEMENT_APP(Rpcs3App)
@@ -43,7 +47,7 @@ void Rpcs3App::OnArguments()
 		// Force this value to be true
 		Ini.HLEExitOnStop.SetValue(true);
 
-		Emu.SetPath(argv[1]);
+		Emu.SetPath(fmt::ToUTF8(argv[1]));
 		Emu.Load();
 		Emu.Run();
 	}
@@ -66,6 +70,12 @@ void Rpcs3App::SendDbgCommand(DbgCommand id, CPUThread* thr)
 	AddPendingEvent(event);
 }
 
+Rpcs3App::Rpcs3App()
+{
+	#ifdef __UNIX__
+	XInitThreads();
+	#endif
+}
 /*
 CPUThread& GetCPU(const u8 core)
 {

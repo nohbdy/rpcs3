@@ -7,12 +7,12 @@ Module cellSysmodule("cellSysmodule", cellSysmodule_init);
 
 enum
 {
-	CELL_SYSMODULE_LOADED						= CELL_OK,
-	CELL_SYSMODULE_ERROR_DUPLICATED				= 0x80012001,
-	CELL_SYSMODULE_ERROR_UNKNOWN				= 0x80012002,
-	CELL_SYSMODULE_ERROR_UNLOADED				= 0x80012003,
-	CELL_SYSMODULE_ERROR_INVALID_MEMCONTAINER	= 0x80012004,
-	CELL_SYSMODULE_ERROR_FATAL					= 0x800120ff,
+	CELL_SYSMODULE_LOADED                     = CELL_OK,
+	CELL_SYSMODULE_ERROR_DUPLICATED           = 0x80012001,
+	CELL_SYSMODULE_ERROR_UNKNOWN              = 0x80012002,
+	CELL_SYSMODULE_ERROR_UNLOADED             = 0x80012003,
+	CELL_SYSMODULE_ERROR_INVALID_MEMCONTAINER = 0x80012004,
+	CELL_SYSMODULE_ERROR_FATAL                = 0x800120ff,
 };
 
 const char *getModuleName(int id) {
@@ -158,7 +158,11 @@ int cellSysmoduleSetMemcontainer(u32 ct_id)
 
 int cellSysmoduleLoadModule(u16 id)
 {
-	cellSysmodule.Warning("cellSysmoduleLoadModule(%s)", wxString(getModuleName(id)).wx_str());
+	if (id == 0xf054)
+	{
+		cellSysmodule.Error("cellSysmoduleLoadModule: TODO: CELL_SYSMODULE_LIBATRAC3MULTI");
+	}
+	cellSysmodule.Warning("cellSysmoduleLoadModule(%s)", getModuleName(id));
 	Module* m = GetModuleById(id);
 
 	if(!m)
@@ -177,7 +181,7 @@ int cellSysmoduleLoadModule(u16 id)
 
 int cellSysmoduleUnloadModule(u16 id)
 {
-	cellSysmodule.Warning("cellSysmoduleUnloadModule(%s)", wxString(getModuleName(id)).wx_str());
+	cellSysmodule.Warning("cellSysmoduleUnloadModule(%s)", getModuleName(id));
 	Module* m = GetModuleById(id);
 
 	if(!m)
@@ -196,7 +200,7 @@ int cellSysmoduleUnloadModule(u16 id)
 
 int cellSysmoduleIsLoaded(u16 id)
 {
-	cellSysmodule.Warning("cellSysmoduleIsLoaded(%s)", wxString(getModuleName(id)).wx_str());
+	cellSysmodule.Warning("cellSysmoduleIsLoaded(%s)", getModuleName(id));
 	Module* m = GetModuleById(id);
 
 	if(!m)

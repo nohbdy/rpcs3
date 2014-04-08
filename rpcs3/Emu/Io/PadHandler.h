@@ -1,42 +1,44 @@
 #pragma once
 
+#include <vector>
+
 enum PortStatus
 {
-	CELL_PAD_STATUS_DISCONNECTED	= 0x00000000,
-	CELL_PAD_STATUS_CONNECTED		= 0x00000001,
-	CELL_PAD_STATUS_ASSIGN_CHANGES	= 0x00000002,
+	CELL_PAD_STATUS_DISCONNECTED   = 0x00000000,
+	CELL_PAD_STATUS_CONNECTED      = 0x00000001,
+	CELL_PAD_STATUS_ASSIGN_CHANGES = 0x00000002,
 };
 
 enum PortSettings
 {
-	CELL_PAD_SETTING_PRESS_ON		= 0x00000002,
-	CELL_PAD_SETTING_SENSOR_ON		= 0x00000004,
-	CELL_PAD_SETTING_PRESS_OFF		= 0x00000000,
-	CELL_PAD_SETTING_SENSOR_OFF		= 0x00000000,
+	CELL_PAD_SETTING_PRESS_ON      = 0x00000002,
+	CELL_PAD_SETTING_SENSOR_ON     = 0x00000004,
+	CELL_PAD_SETTING_PRESS_OFF     = 0x00000000,
+	CELL_PAD_SETTING_SENSOR_OFF    = 0x00000000,
 };
 
 enum Digital1Flags
 {
-	CELL_PAD_CTRL_LEFT		= 0x00000080,
-	CELL_PAD_CTRL_DOWN		= 0x00000040,
-	CELL_PAD_CTRL_RIGHT		= 0x00000020,
-	CELL_PAD_CTRL_UP		= 0x00000010,
-	CELL_PAD_CTRL_START		= 0x00000008,
-	CELL_PAD_CTRL_R3		= 0x00000004,
-	CELL_PAD_CTRL_L3		= 0x00000002,
-	CELL_PAD_CTRL_SELECT	= 0x00000001,
+	CELL_PAD_CTRL_LEFT     = 0x00000080,
+	CELL_PAD_CTRL_DOWN     = 0x00000040,
+	CELL_PAD_CTRL_RIGHT    = 0x00000020,
+	CELL_PAD_CTRL_UP       = 0x00000010,
+	CELL_PAD_CTRL_START    = 0x00000008,
+	CELL_PAD_CTRL_R3       = 0x00000004,
+	CELL_PAD_CTRL_L3       = 0x00000002,
+	CELL_PAD_CTRL_SELECT   = 0x00000001,
 };
 
 enum Digital2Flags
 {
-	CELL_PAD_CTRL_SQUARE	= 0x00000080,
-	CELL_PAD_CTRL_CROSS		= 0x00000040,
-	CELL_PAD_CTRL_CIRCLE	= 0x00000020,
-	CELL_PAD_CTRL_TRIANGLE	= 0x00000010,
-	CELL_PAD_CTRL_R1		= 0x00000008,
-	CELL_PAD_CTRL_L1		= 0x00000004,
-	CELL_PAD_CTRL_R2		= 0x00000002,
-	CELL_PAD_CTRL_L2		= 0x00000001,
+	CELL_PAD_CTRL_SQUARE   = 0x00000080,
+	CELL_PAD_CTRL_CROSS    = 0x00000040,
+	CELL_PAD_CTRL_CIRCLE   = 0x00000020,
+	CELL_PAD_CTRL_TRIANGLE = 0x00000010,
+	CELL_PAD_CTRL_R1       = 0x00000008,
+	CELL_PAD_CTRL_L1       = 0x00000004,
+	CELL_PAD_CTRL_R2       = 0x00000002,
+	CELL_PAD_CTRL_L2       = 0x00000001,
 };
 
 enum DeviceCapability
@@ -50,35 +52,35 @@ enum DeviceCapability
 
 enum DeviceType
 {
-	CELL_PAD_DEV_TYPE_STANDARD		= 0,
-	CELL_PAD_DEV_TYPE_BD_REMOCON	= 4,
-	CELL_PAD_DEV_TYPE_LDD			= 5,
+	CELL_PAD_DEV_TYPE_STANDARD   = 0,
+	CELL_PAD_DEV_TYPE_BD_REMOCON = 4,
+	CELL_PAD_DEV_TYPE_LDD        = 5,
 };
 
 enum ButtonDataOffset
 {
-	CELL_PAD_BTN_OFFSET_DIGITAL1		= 2,
-	CELL_PAD_BTN_OFFSET_DIGITAL2		= 3,
-	CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_X	= 4,
-	CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_Y	= 5,
-	CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X	= 6,
-	CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y	= 7,
-	CELL_PAD_BTN_OFFSET_PRESS_RIGHT		= 8,
-	CELL_PAD_BTN_OFFSET_PRESS_LEFT		= 9,
-	CELL_PAD_BTN_OFFSET_PRESS_UP		= 10,
-	CELL_PAD_BTN_OFFSET_PRESS_DOWN		= 11,
-	CELL_PAD_BTN_OFFSET_PRESS_TRIANGLE	= 12,
-	CELL_PAD_BTN_OFFSET_PRESS_CIRCLE	= 13,
-	CELL_PAD_BTN_OFFSET_PRESS_CROSS		= 14,
-	CELL_PAD_BTN_OFFSET_PRESS_SQUARE	= 15,
-	CELL_PAD_BTN_OFFSET_PRESS_L1		= 16,
-	CELL_PAD_BTN_OFFSET_PRESS_R1		= 17,
-	CELL_PAD_BTN_OFFSET_PRESS_L2		= 18,
-	CELL_PAD_BTN_OFFSET_PRESS_R2		= 19,
-	CELL_PAD_BTN_OFFSET_SENSOR_X		= 20,
-	CELL_PAD_BTN_OFFSET_SENSOR_Y		= 21,
-	CELL_PAD_BTN_OFFSET_SENSOR_Z		= 22,
-	CELL_PAD_BTN_OFFSET_SENSOR_G		= 23,
+	CELL_PAD_BTN_OFFSET_DIGITAL1       = 2,
+	CELL_PAD_BTN_OFFSET_DIGITAL2       = 3,
+	CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_X = 4,
+	CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_Y = 5,
+	CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X  = 6,
+	CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y  = 7,
+	CELL_PAD_BTN_OFFSET_PRESS_RIGHT    = 8,
+	CELL_PAD_BTN_OFFSET_PRESS_LEFT     = 9,
+	CELL_PAD_BTN_OFFSET_PRESS_UP       = 10,
+	CELL_PAD_BTN_OFFSET_PRESS_DOWN     = 11,
+	CELL_PAD_BTN_OFFSET_PRESS_TRIANGLE = 12,
+	CELL_PAD_BTN_OFFSET_PRESS_CIRCLE   = 13,
+	CELL_PAD_BTN_OFFSET_PRESS_CROSS    = 14,
+	CELL_PAD_BTN_OFFSET_PRESS_SQUARE   = 15,
+	CELL_PAD_BTN_OFFSET_PRESS_L1       = 16,
+	CELL_PAD_BTN_OFFSET_PRESS_R1       = 17,
+	CELL_PAD_BTN_OFFSET_PRESS_L2       = 18,
+	CELL_PAD_BTN_OFFSET_PRESS_R2       = 19,
+	CELL_PAD_BTN_OFFSET_SENSOR_X       = 20,
+	CELL_PAD_BTN_OFFSET_SENSOR_Y       = 21,
+	CELL_PAD_BTN_OFFSET_SENSOR_Z       = 22,
+	CELL_PAD_BTN_OFFSET_SENSOR_G       = 23,
 };
 
 static const u32 CELL_MAX_PADS = 127;
@@ -128,8 +130,8 @@ struct Pad
 	u32 m_device_capability;
 	u32 m_device_type;
 
-	Array<Button> m_buttons;
-	Array<AnalogStick> m_sticks;
+	std::vector<Button> m_buttons;
+	std::vector<AnalogStick> m_sticks;
 
 	s16 m_analog_left_x;
 	s16 m_analog_left_y;
@@ -184,8 +186,6 @@ struct Pad
 		, m_sensor_g(0)
 	{
 	}
-
-	~Pad() { m_buttons.Clear(); m_sticks.Clear(); }
 };
 
 struct PadInfo
@@ -199,7 +199,7 @@ class PadHandlerBase
 {
 protected:
 	PadInfo m_info;
-	Array<Pad> m_pads;
+	std::vector<Pad> m_pads;
 
 public:
 	virtual void Init(const u32 max_connect)=0;
@@ -207,14 +207,14 @@ public:
 
 	void Key(const u32 code, bool pressed)
 	{
-		for(u64 p=0; p<GetPads().GetCount(); ++p)
+		for(Pad& pad : m_pads)
 		{
-			for(u64 b=0; b<GetButtons(p).GetCount(); b++)
+			for(Button& button : pad.m_buttons)
 			{
-				Button& button = GetButtons(p).Get(b);
-				if(button.m_keyCode != code) continue;
+				if(button.m_keyCode != code)
+					continue;
 
-				GetPads()[p].m_port_status |= CELL_PAD_STATUS_ASSIGN_CHANGES;
+				pad.m_port_status |= CELL_PAD_STATUS_ASSIGN_CHANGES;
 
 				if(button.m_pressed && !pressed)
 				{
@@ -225,12 +225,13 @@ public:
 					button.m_pressed = pressed;
 				}
 			}
-			for(u32 s = 0; s < GetSticks(p).GetCount(); s++)
-			{
-				AnalogStick& stick = GetSticks(p).Get(s);
-				if (stick.m_keyCodeMax != code && stick.m_keyCodeMin != code) continue;
 
-				GetPads()[p].m_port_status |= CELL_PAD_STATUS_ASSIGN_CHANGES;
+			for(AnalogStick& stick : pad.m_sticks)
+			{
+				if (stick.m_keyCodeMax != code && stick.m_keyCodeMin != code)
+					continue;
+
+				pad.m_port_status |= CELL_PAD_STATUS_ASSIGN_CHANGES;
 
 				if (stick.m_keyCodeMax == code)
 				{
@@ -247,7 +248,7 @@ public:
 	}
 
 	PadInfo& GetInfo() { return m_info; }
-	Array<Pad>& GetPads() { return m_pads; }
-	Array<Button>& GetButtons(const u32 pad) { return GetPads()[pad].m_buttons; }
-	Array<AnalogStick>& GetSticks(const u32 pad) { return GetPads()[pad].m_sticks; }
+	std::vector<Pad>& GetPads() { return m_pads; }
+	std::vector<Button>& GetButtons(const u32 pad) { return m_pads[pad].m_buttons; }
+	std::vector<AnalogStick>& GetSticks(const u32 pad) { return m_pads[pad].m_sticks; }
 };
