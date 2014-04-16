@@ -5,13 +5,12 @@ PADManager::PADManager(wxWindow* parent)
 	: wxDialog(parent, wxID_ANY, "PAD Settings", wxDefaultPosition)
 	, m_button_id(0)
 	, m_key_pressed(false)
+	, m_emu_paused(false)
 {
-	bool paused = false;
-
 	if(Emu.IsRunning())
 	{
 		Emu.Pause();
-		paused = true;
+		m_emu_paused = true;
 	}
 
 	wxBoxSizer* s_panel(new wxBoxSizer(wxHORIZONTAL));
@@ -246,8 +245,6 @@ PADManager::PADManager(wxWindow* parent)
 	Connect(b_ok->GetId(),  wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler(PADManager::OnButtonClicked));
 	Connect(b_reset->GetId(),  wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler(PADManager::OnButtonClicked));
 	Connect(b_cancel->GetId(),  wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler(PADManager::OnButtonClicked));
-
-	if(paused) Emu.Resume();
 }
 
 void PADManager::OnKeyDown(wxKeyEvent &keyEvent)
@@ -554,10 +551,10 @@ void PADManager::RunTimer(const u32 seconds, const u32 id)
 {
 	m_seconds = seconds;
 	clock_t t1, t2;
-	t1 = t2 = clock() / CLK_TCK;
+	t1 = t2 = clock() / CLOCKS_PER_SEC;
 	while (m_seconds) 
 	{
-		if (t1 / CLK_TCK + 1 <= (t2 = clock()) / CLK_TCK) 
+		if (t1 / CLOCKS_PER_SEC + 1 <= (t2 = clock()) / CLOCKS_PER_SEC) 
 		{
 			UpdateTimerLabel(id);
 			m_seconds--;
