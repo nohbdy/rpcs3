@@ -84,6 +84,7 @@ int sceNpTrophyCreateContext(mem32_t context, mem_ptr_t<SceNpCommunicationId> co
 				ctxt.trp_stream = stream;
 				ctxt.trp_name = entry->name;
 				s_npTrophyInstance.contexts.push_back(ctxt);
+				delete stream;
 				stream = nullptr;
 				return CELL_OK;
 			}
