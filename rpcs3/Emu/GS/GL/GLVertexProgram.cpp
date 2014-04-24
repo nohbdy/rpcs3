@@ -468,6 +468,9 @@ GLVertexProgram::~GLVertexProgram()
 
 void GLVertexProgram::Decompile(RSXVertexProgram& prog)
 {
+	GLVertexDecompilerThread m_decompiler_thread(prog.data, shader, parr);
+	m_decompiler_thread.Task();
+	/*
 #if 0
 	GLVertexDecompilerThread(data, shader, parr).Entry();
 #else
@@ -486,6 +489,7 @@ void GLVertexProgram::Decompile(RSXVertexProgram& prog)
 	m_decompiler_thread = new GLVertexDecompilerThread(prog.data, shader, parr);
 	m_decompiler_thread->Start();
 #endif
+	*/
 }
 
 void GLVertexProgram::Compile()

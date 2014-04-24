@@ -59,7 +59,7 @@ protected:
 
 	u64 m_exit_status;
 
-	CPUDecoder* m_dec;
+	std::unique_ptr<CPUDecoder> m_dec;
 
 public:
 	virtual void InitRegs()=0;

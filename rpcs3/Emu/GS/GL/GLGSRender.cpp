@@ -2,6 +2,8 @@
 #include "GLGSRender.h"
 #include "Emu/Cell/PPCInstrTable.h"
 #include "Gui/RSXDebugger.h"
+#include "Emu/GS/RSXFragmentProgram.h"
+#include "Emu/GS/GL/GLSLFragmentProgramWriter.h"
 
 #define CMD_DEBUG 0
 #define DUMP_VERTEX_DATA 0
@@ -396,7 +398,18 @@ bool GLGSRender::LoadProgram()
 	if(m_fp_buf_num == -1)
 	{
 		ConLog.Warning("FP not found in buffer!");
-		m_shader_prog.Decompile(*m_cur_shader_prog);
+		rpcs3::rsx::FragmentShaderParser parser(*m_cur_shader_prog);
+		auto instructions = parser.Parse();
+		auto parsedLength = parser.GetSize();
+		auto parsedHash = parser.GetHash();
+		rpcs3::rsx::gl::GLSLFragmentProgramWriter writer(instructions, m_cur_shader_prog->ctrl);
+		auto glslShaderSource = writer.Process();
+		m_shader_prog.SetShaderText(glslShaderSource);
+
+		// Gotta write the size... at least until we change the caching
+		m_cur_shader_prog->size = parser.GetSize();
+
+		//m_shader_prog.Decompile(*m_cur_shader_prog);
 		m_shader_prog.Compile();
 		checkForGlError("m_shader_prog.Compile");
 

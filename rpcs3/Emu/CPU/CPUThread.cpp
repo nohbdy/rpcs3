@@ -17,7 +17,6 @@ CPUThread::CPUThread(CPUThreadType type)
 	, m_prio(0)
 	, m_sync_wait(false)
 	, m_wait_thread_id(-1)
-	, m_dec(nullptr)
 	, m_is_step(false)
 	, m_is_branch(false)
 	, m_status(Stopped)
@@ -26,7 +25,6 @@ CPUThread::CPUThread(CPUThreadType type)
 
 CPUThread::~CPUThread()
 {
-	safe_delete(m_dec);
 }
 
 void CPUThread::Close()
@@ -34,8 +32,7 @@ void CPUThread::Close()
 	ThreadBase::Stop(m_sync_wait);
 	DoStop();
 
-	delete m_dec;
-	m_dec = nullptr;
+	m_dec.reset(nullptr);
 }
 
 void CPUThread::Reset()

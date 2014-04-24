@@ -80,7 +80,7 @@ void ARMv7Thread::DoRun()
 
 	case 1:
 	case 2:
-		m_dec = new ARMv7Decoder(*new ARMv7Interpreter(*this));
+		m_dec.reset(new ARMv7Decoder(*new ARMv7Interpreter(*this)));
 	break;
 	}
 }

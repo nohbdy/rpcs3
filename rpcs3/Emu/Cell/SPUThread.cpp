@@ -76,7 +76,7 @@ void SPUThread::DoRun()
 
 	case 1:
 	case 2:
-		m_dec = new SPUDecoder(*new SPUInterpreter(*this));
+		m_dec.reset(new SPUDecoder(*new SPUInterpreter(*this)));
 	break;
 	}
 
@@ -94,8 +94,7 @@ void SPUThread::DoPause()
 
 void SPUThread::DoStop()
 {
-	delete m_dec;
-	m_dec = nullptr;
+	m_dec.reset(nullptr);
 }
 
 void SPUThread::DoClose()

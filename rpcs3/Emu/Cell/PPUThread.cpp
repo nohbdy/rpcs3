@@ -151,7 +151,7 @@ void PPUThread::DoRun()
 	case 1:
 	case 2:
 		auto ppui = new PPUInterpreter(*this);
-		m_dec = new PPUDecoder(ppui);
+		m_dec.reset(new PPUDecoder(ppui));
 	break;
 	}
 }
@@ -166,8 +166,7 @@ void PPUThread::DoPause()
 
 void PPUThread::DoStop()
 {
-	delete m_dec;
-	m_dec = nullptr;
+	m_dec.reset(nullptr);
 }
 
 bool dump_enable = false;

@@ -1,6 +1,12 @@
 #pragma once
 #include "GLShaderParam.h"
-#include "Emu/GS/RSXFragmentProgram.h"
+//#include "Emu/GS/RSXFragmentProgram.h"
+
+namespace rpcs3 {
+namespace rsx {
+	struct RSXShaderProgram;
+}
+}
 
 struct GLFragmentDecompilerThread : public ThreadBase
 {
@@ -10,7 +16,7 @@ struct GLFragmentDecompilerThread : public ThreadBase
 
 		struct
 		{
-			u32 end                 : 1;
+			u32 end                 : 1; // Set to 1 if this is the last instruction
 			u32 dest_reg            : 6;
 			u32 fp16                : 1;
 			u32 set_cond            : 1;
@@ -20,11 +26,11 @@ struct GLFragmentDecompilerThread : public ThreadBase
 			u32 mask_w              : 1;
 			u32 src_attr_reg_num    : 4;
 			u32 tex_num             : 4;
-			u32 exp_tex             : 1;
+			u32 exp_tex             : 1; // _bx2
 			u32 prec                : 2;
 			u32 opcode              : 6;
 			u32 no_dest             : 1;
-			u32 saturate            : 1;
+			u32 saturate            : 1; // _sat
 		};
 	} dst;
 
@@ -75,6 +81,22 @@ struct GLFragmentDecompilerThread : public ThreadBase
 			u32 scale               : 3;
 			u32 opcode_is_branch    : 1;
 		};
+
+		struct {
+			u32 reg_type		 : 2;
+			u32 end_counter      : 8; // end counter for a LOOP, or rep count for a REP
+			u32 init_counter     : 8; // initial counter value for a LOOP
+			u32 unused0          : 1;
+			u32 increment        : 8; // increment per loop for a LOOP
+			u32 unused1          : 4;
+			u32 opcode_is_branch : 1;
+		} loop;
+
+		struct {
+			u32 reg_type         : 2;
+			u32 if_else_line     : 17;	// for ifelse instructions, this is the position of the else
+			u32 unused           : 13;
+		} ifelse;
 	} src1;
 
 	union SRC2
@@ -96,6 +118,12 @@ struct GLFragmentDecompilerThread : public ThreadBase
 			u32 use_index_reg    : 1;
 			u32 perspective_corr : 1;
 		};
+
+		struct {
+			u32 reg_type		 : 2;
+			u32 loop_end		 : 17; // for this ifelse/loop/rep, this is the position of the endif/endloop/endrep
+			u32 unused  		 : 13;
+		} loop;
 	} src2;
 
 	std::string main;
@@ -138,6 +166,15 @@ struct GLFragmentDecompilerThread : public ThreadBase
 	u32 GetData(const u32 d) const { return d << 16 | d >> 16; }
 };
 
+/**
+ * Translates a fragment shader in binary form into a GLSL shader we can use.
+ */
+class GLFragmentProgramDecompiler
+{
+public:
+	GLFragmentProgramDecompiler();
+};
+
 /** Storage for an Fragment Program in the process of of recompilation.
  *  This class calls OpenGL functions and should only be used from the RSX/Graphics thread.
  */
@@ -151,14 +188,14 @@ public:
 	 * Decompile a fragment shader located in the PS3's Memory.  This function operates synchronously.
 	 * @param prog RSXShaderProgram specifying the location and size of the shader in memory
 	 */
-	void Decompile(RSXShaderProgram& prog);
+	void Decompile(rpcs3::rsx::RSXShaderProgram& prog);
 
 	/**
 	* Asynchronously decompile a fragment shader located in the PS3's Memory.
 	* When this function is called you must call Wait before GetShaderText() will return valid data.
 	* @param prog RSXShaderProgram specifying the location and size of the shader in memory
 	*/
-	void DecompileAsync(RSXShaderProgram& prog);
+	void DecompileAsync(rpcs3::rsx::RSXShaderProgram& prog);
 
 	/** Wait for the decompiler task to complete decompilation. */
 	void Wait();

@@ -1,5 +1,8 @@
 #include "stdafx.h"
 #include "GLProgramBuffer.h"
+#include "Emu/GS/RSXFragmentProgram.h"
+
+using rpcs3::rsx::RSXShaderProgram;
 
 int GLProgramBuffer::SearchFp(const RSXShaderProgram& rsx_fp, GLShaderProgram& gl_fp)
 {

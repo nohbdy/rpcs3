@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "RSXThread.h"
 #include "Emu/SysCalls/lv2/SC_Time.h"
+#include "RSXFragmentProgram.h"
 
 #define ARGS(x) (x >= count ? OutOfArgsCount(x, cmd, count) : Memory.Read32(Memory.RSXIOMem.GetStartAddr() + m_ctrl->get + (4*(x+1))))
 
@@ -654,12 +655,17 @@ void RSXThread::DoCmd(const u32 fcmd, const u32 cmd, mem32_ptr_t& args, const u3
 
 	case NV4097_SET_SHADER_PROGRAM:
 	{
-		m_cur_shader_prog = &m_shader_progs[m_cur_shader_prog_num];
+		m_cur_shader_prog = m_shader_progs[m_cur_shader_prog_num].get();
+		// Create an RSXShaderProgram if one didn't already exist
+		if (!m_cur_shader_prog) {
+			m_cur_shader_prog = new rpcs3::rsx::RSXShaderProgram();
+			m_shader_progs[m_cur_shader_prog_num].reset(m_cur_shader_prog);
+		}
 		//m_cur_shader_prog_num = (m_cur_shader_prog_num + 1) % 16;
 		u32 a0 = ARGS(0);
 		m_cur_shader_prog->offset = a0 & ~0x3;
 		m_cur_shader_prog->addr = GetAddress(m_cur_shader_prog->offset, (a0 & 0x3) - 1);
-		m_cur_shader_prog->ctrl = 0x40;
+		m_cur_shader_prog->ctrl.value = 0x40;
 	}
 	break;
 
@@ -678,7 +684,7 @@ void RSXThread::DoCmd(const u32 fcmd, const u32 cmd, mem32_ptr_t& args, const u3
 			break;
 		}
 
-		m_cur_shader_prog->ctrl = ARGS(0);
+		m_cur_shader_prog->ctrl.value = ARGS(0);
 	}
 	break;
 
@@ -1009,6 +1015,7 @@ void RSXThread::DoCmd(const u32 fcmd, const u32 cmd, mem32_ptr_t& args, const u3
 	case NV4097_INVALIDATE_L2:
 	{
 		//TODO
+		// Need to recheck any shaders after this point for code/constant changes
 	}
 	break;
 
@@ -1190,6 +1197,7 @@ void RSXThread::DoCmd(const u32 fcmd, const u32 cmd, mem32_ptr_t& args, const u3
 
 	case NV4097_GET_REPORT:
 	{
+		// The report shouldn't write to memory until all previous RSX commands have been executed
 		u32 a0 = ARGS(0);
 		u8 type = a0 >> 24;
 		u32 offset = a0 & 0xffffff;
@@ -1589,18 +1597,20 @@ void RSXThread::Task()
 
 		if(cmd == 0)
 		{
-			ConLog.Warning("null cmd: addr=0x%x, put=0x%x, get=0x%x", Memory.RSXIOMem.GetStartAddr() + get, m_ctrl->put, get);
-			Emu.Pause();
-			continue;
+			// This is an RSX Method NOP - nothing to be alarmed about - just skip over it
+			// ConLog.Warning("null cmd: addr=0x%x, put=0x%x, get=0x%x", Memory.RSXIOMem.GetStartAddr() + get, put, get);
+			// Emu.Pause();
+			// continue;
 		}
+		else {
+			for(u32 i=0; i<count; i++)
+			{
+				methodRegisters[(cmd & 0xffff) + (i*4*inc)] = ARGS(i);
+			}
 
-		for(u32 i=0; i<count; i++)
-		{
-			methodRegisters[(cmd & 0xffff) + (i*4*inc)] = ARGS(i);
+			mem32_ptr_t args(Memory.RSXIOMem.GetStartAddr() + get + 4);
+			DoCmd(cmd, cmd & 0x3ffff, args, count);
 		}
-
-		mem32_ptr_t args(Memory.RSXIOMem.GetStartAddr() + get + 4);
-		DoCmd(cmd, cmd & 0x3ffff, args, count);
 
 		m_ctrl->get = get + (count + 1) * 4;
 		//memset(Memory.GetMemFromAddr(p.m_ioAddress + get), 0, (count + 1) * 4);
@@ -1609,4 +1619,62 @@ void RSXThread::Task()
 	ConLog.Write("RSX thread exit...");
 
 	OnExitThread();
+}
+
+RSXThread::RSXThread()
+	: ThreadBase("RSXThread")
+	, m_ctrl(nullptr)
+	, m_flip_status(0)
+	, m_flip_mode(CELL_GCM_DISPLAY_VSYNC)
+	, m_debug_level(CELL_GCM_DEBUG_LEVEL0)
+	, m_frequency_mode(CELL_GCM_DISPLAY_FREQUENCY_DISABLE)
+	, m_main_mem_addr(0)
+	, m_local_mem_addr(0)
+	, m_draw_mode(0)
+	, m_draw_array_count(0)
+	, m_draw_array_first(~0)
+	, m_gcm_current_buffer(0)
+	, m_read_buffer(true)
+{
+	m_set_alpha_test = false;
+	m_set_blend = false;
+	m_set_depth_bounds_test = false;
+	m_depth_test_enable = false;
+	m_set_logic_op = false;
+	m_set_cull_face_enable = false;
+	m_set_dither = false;
+	m_set_stencil_test = false;
+	m_set_line_smooth = false;
+	m_set_poly_smooth = false;
+	m_set_two_sided_stencil_test_enable = false;
+	m_set_surface_clip_horizontal = false;
+	m_set_surface_clip_vertical = false;
+
+	m_clear_color_r = 0;
+	m_clear_color_g = 0;
+	m_clear_color_b = 0;
+	m_clear_color_a = 0;
+	m_clear_z = 0xffffff;
+	m_clear_s = 0;
+
+	m_depth_bounds_min = 0.0;
+	m_depth_bounds_max = 1.0;
+	m_restart_index = 0xffffffff;
+
+	m_point_x = 0;
+	m_point_y = 0;
+
+	m_front_face = 0x0901;
+
+	// Construct Textures
+	for (int i = 0; i<16; i++)
+	{
+		m_textures[i] = RSXTexture(i);
+	}
+
+	Reset();
+}
+
+RSXThread::~RSXThread()
+{
 }

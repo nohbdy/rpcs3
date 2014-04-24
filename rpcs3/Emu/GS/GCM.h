@@ -1198,6 +1198,7 @@ static const std::string GetMethodName(const u32 id)
 		{ NV4097_SET_TRANSFORM_CONSTANT_LOAD , "SetTransformConstantLoad" } ,
 		{ NV4097_SET_FREQUENCY_DIVIDER_OPERATION , "SetFrequencyDividerOperation" } ,
 		{ NV4097_INVALIDATE_L2 , "InvalidateL2" } ,
+		{ NV4097_SET_SHADER_PACKER, "SetShaderPacker" } ,
 		{ NV4097_SET_TRANSFORM_BRANCH_BITS, "SetTransformBranchBits" } ,
 	};
 

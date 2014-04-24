@@ -2,11 +2,17 @@
 #include "GCM.h"
 #include "RSXTexture.h"
 #include "RSXVertexProgram.h"
-#include "RSXFragmentProgram.h"
+//#include "RSXFragmentProgram.h"
 #include "Emu/SysCalls/Callback.h"
 
 #include <set> // For tracking a list of used gcm commands
 #include <stack>
+
+namespace rpcs3 {
+namespace rsx {
+	struct RSXShaderProgram;
+}
+}
 
 enum Method
 {
@@ -109,11 +115,13 @@ public:
 	std::vector<RSXTransformConstant> m_fragment_constants;
 	std::vector<RSXTransformConstant> m_transform_constants;
 
-	u32 m_cur_shader_prog_num;
-	RSXShaderProgram m_shader_progs[m_fragment_count];
-	RSXShaderProgram* m_cur_shader_prog;
 	RSXVertexProgram m_vertex_progs[m_vertex_count];
 	RSXVertexProgram* m_cur_vertex_prog;
+
+protected:
+	u32 m_cur_shader_prog_num;
+	std::unique_ptr<rpcs3::rsx::RSXShaderProgram> m_shader_progs[m_fragment_count];
+	rpcs3::rsx::RSXShaderProgram* m_cur_shader_prog;
 
 public:
 	u32 m_ioAddress, m_ioSize, m_ctrlAddress;
@@ -388,61 +396,8 @@ public:
 	std::set<u32> m_used_gcm_commands;
 
 protected:
-	RSXThread()
-		: ThreadBase("RSXThread")
-		, m_ctrl(nullptr)
-		, m_flip_status(0)
-		, m_flip_mode(CELL_GCM_DISPLAY_VSYNC)
-		, m_debug_level(CELL_GCM_DEBUG_LEVEL0)
-		, m_frequency_mode(CELL_GCM_DISPLAY_FREQUENCY_DISABLE)
-		, m_main_mem_addr(0)
-		, m_local_mem_addr(0)
-		, m_draw_mode(0)
-		, m_draw_array_count(0)
-		, m_draw_array_first(~0)
-		, m_gcm_current_buffer(0)
-		, m_read_buffer(true)
-	{
-		m_set_alpha_test = false;
-		m_set_blend = false;
-		m_set_depth_bounds_test = false;
-		m_depth_test_enable = false;
-		m_set_logic_op = false;
-		m_set_cull_face_enable = false;
-		m_set_dither = false;
-		m_set_stencil_test = false;
-		m_set_line_smooth = false;
-		m_set_poly_smooth = false;
-		m_set_two_sided_stencil_test_enable = false;
-		m_set_surface_clip_horizontal = false;
-		m_set_surface_clip_vertical = false;
-
-		m_clear_color_r = 0;
-		m_clear_color_g = 0;
-		m_clear_color_b = 0;
-		m_clear_color_a = 0;
-		m_clear_z = 0xffffff;
-		m_clear_s = 0;
-
-		m_depth_bounds_min = 0.0;
-		m_depth_bounds_max = 1.0;
-		m_restart_index = 0xffffffff;
-
-		m_point_x = 0;
-		m_point_y = 0;
-
-		m_front_face = 0x0901;
-
-		// Construct Textures
-		for(int i=0; i<16; i++)
-		{
-			m_textures[i] = RSXTexture(i);
-		}
-
-		Reset();
-	}
-
-	virtual ~RSXThread() {}
+	RSXThread();
+	virtual ~RSXThread();
 
 	void Reset()
 	{

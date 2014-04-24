@@ -289,6 +289,7 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\Utilities\Hasher.cpp" />
     <ClCompile Include="..\Utilities\SMutex.cpp" />
     <ClCompile Include="..\Utilities\StrFmt.cpp" />
     <ClCompile Include="..\Utilities\Thread.cpp" />
@@ -332,10 +333,12 @@
     <ClCompile Include="Emu\GS\GL\GLGSRender.cpp" />
     <ClCompile Include="Emu\GS\GL\GLProgram.cpp" />
     <ClCompile Include="Emu\GS\GL\GLProgramBuffer.cpp" />
+    <ClCompile Include="Emu\GS\GL\GLSLFragmentProgramWriter.cpp" />
     <ClCompile Include="Emu\GS\GL\GLVertexProgram.cpp" />
     <ClCompile Include="Emu\GS\GL\OpenGL.cpp" />
     <ClCompile Include="Emu\GS\GSManager.cpp" />
     <ClCompile Include="Emu\GS\GSRender.cpp" />
+    <ClCompile Include="Emu\GS\RSXFragmentProgram.cpp" />
     <ClCompile Include="Emu\GS\RSXTexture.cpp" />
     <ClCompile Include="Emu\GS\RSXThread.cpp" />
     <ClCompile Include="Emu\HDD\HDD.cpp" />
@@ -446,6 +449,7 @@
   <ItemGroup>
     <ClInclude Include="..\Utilities\Array.h" />
     <ClInclude Include="..\Utilities\BEType.h" />
+    <ClInclude Include="..\Utilities\Hasher.h" />
     <ClInclude Include="..\Utilities\IdManager.h" />
     <ClInclude Include="..\Utilities\MTProgressDialog.h" />
     <ClInclude Include="..\Utilities\SMutex.h" />
@@ -515,6 +519,7 @@
     <ClInclude Include="Emu\GS\GL\GLProgram.h" />
     <ClInclude Include="Emu\GS\GL\GLProgramBuffer.h" />
     <ClInclude Include="Emu\GS\GL\GLShaderParam.h" />
+    <ClInclude Include="Emu\GS\GL\GLSLFragmentProgramWriter.h" />
     <ClInclude Include="Emu\GS\GL\GLVertexProgram.h" />
     <ClInclude Include="Emu\GS\GL\OpenGL.h" />
     <ClInclude Include="Emu\GS\GSManager.h" />

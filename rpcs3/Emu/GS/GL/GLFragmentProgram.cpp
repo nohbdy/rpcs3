@@ -1,5 +1,8 @@
 #include "stdafx.h"
 #include "GLFragmentProgram.h"
+#include "Emu/GS/RSXFragmentProgram.h"
+
+using namespace rpcs3::rsx;
 
 void GLFragmentDecompilerThread::AddCode(std::string code, bool append_mask)
 {
@@ -223,9 +226,12 @@ template<typename T> std::string GLFragmentDecompilerThread::GetSRC(T src)
 
 std::string GLFragmentDecompilerThread::BuildCode()
 {
+	rpcs3::rsx::FragmentProgramControl control;
+	control.value = m_ctrl;
+
 	//main += fmt::Format("\tgl_FragColor = %c0;\n", m_ctrl & 0x40 ? 'r' : 'h');
-	main += "\t" + m_parr.AddParam(PARAM_OUT, "vec4", "ocol", 0) + " = " + (m_ctrl & 0x40 ? "r0" : "h0") + ";\n";
-	if(m_ctrl & 0xe) main += "\tgl_FragDepth = r1.z;\n";
+	main += "\t" + m_parr.AddParam(PARAM_OUT, "vec4", "ocol", 0) + " = " + (control.OutputFromR0() ? "r0" : "h0") + ";\n";
+	if (control.DepthReplace()) main += "\tgl_FragDepth = r1.z;\n";
 
 	std::string p;
 
@@ -255,74 +261,74 @@ void GLFragmentDecompilerThread::Task()
 
 		m_offset = 4 * 4;
 
-		const u32 opcode = dst.opcode | (src1.opcode_is_branch << 6);
+		const FragmentShaderOpcode::Type opcode = (FragmentShaderOpcode::Type)(dst.opcode | (src1.opcode_is_branch << 6));
 
 		switch(opcode)
 		{
-		case 0x00: break; //NOP
-		case 0x01: AddCode(GetSRC(src0)); break; //MOV
-		case 0x02: AddCode("(" + GetSRC(src0) + " * " + GetSRC(src1) + ")"); break; //MUL
-		case 0x03: AddCode("(" + GetSRC(src0) + " + " + GetSRC(src1) + ")"); break; //ADD
-		case 0x04: AddCode("(" + GetSRC(src0) + " * " + GetSRC(src1) + " + " + GetSRC(src2) + ")"); break; //MAD
-		case 0x05: AddCode("vec2(dot(" + GetSRC(src0) + ".xyz, " + GetSRC(src1) + ".xyz), 0).xxxx"); break; // DP3
-		case 0x06: AddCode("vec2(dot(" + GetSRC(src0) + ", " + GetSRC(src1) + "), 0).xxxx"); break; // DP4
-		case 0x07: AddCode("vec2(distance(" + GetSRC(src0) + ", " + GetSRC(src1) + "), 0).xxxx"); break; // DST
-		case 0x08: AddCode("min(" + GetSRC(src0) + ", " + GetSRC(src1) + ")"); break; // MIN
-		case 0x09: AddCode("max(" + GetSRC(src0) + ", " + GetSRC(src1) + ")"); break; // MAX
-		case 0x0a: AddCode("vec4(lessThan(" + GetSRC(src0) + ", " + GetSRC(src1) + "))"); break; // SLT
-		case 0x0b: AddCode("vec4(greaterThanEqual(" + GetSRC(src0) + ", " + GetSRC(src1) + "))"); break; // SGE
-		case 0x0c: AddCode("vec4(lessThanEqual(" + GetSRC(src0) + ", " + GetSRC(src1) + "))"); break; // SLE
-		case 0x0d: AddCode("vec4(greaterThan(" + GetSRC(src0) + ", " + GetSRC(src1) + "))"); break; // SGT
-		case 0x0e: AddCode("vec4(notEqual(" + GetSRC(src0) + ", " + GetSRC(src1) + "))"); break; // SNE
-		case 0x0f: AddCode("vec4(equal(" + GetSRC(src0) + ", " + GetSRC(src1) + "))"); break; // SEQ
+		case FragmentShaderOpcode::NOP: break; //NOP
+		case FragmentShaderOpcode::MOV: AddCode(GetSRC(src0)); break; //MOV
+		case FragmentShaderOpcode::MUL: AddCode("(" + GetSRC(src0) + " * " + GetSRC(src1) + ")"); break; //MUL
+		case FragmentShaderOpcode::ADD: AddCode("(" + GetSRC(src0) + " + " + GetSRC(src1) + ")"); break; //ADD
+		case FragmentShaderOpcode::MAD: AddCode("(" + GetSRC(src0) + " * " + GetSRC(src1) + " + " + GetSRC(src2) + ")"); break; //MAD
+		case FragmentShaderOpcode::DP3: AddCode("vec2(dot(" + GetSRC(src0) + ".xyz, " + GetSRC(src1) + ".xyz), 0).xxxx"); break; // DP3
+		case FragmentShaderOpcode::DP4: AddCode("vec2(dot(" + GetSRC(src0) + ", " + GetSRC(src1) + "), 0).xxxx"); break; // DP4
+		case FragmentShaderOpcode::DST: AddCode("vec2(distance(" + GetSRC(src0) + ", " + GetSRC(src1) + "), 0).xxxx"); break; // DST
+		case FragmentShaderOpcode::MIN: AddCode("min(" + GetSRC(src0) + ", " + GetSRC(src1) + ")"); break; // MIN
+		case FragmentShaderOpcode::MAX: AddCode("max(" + GetSRC(src0) + ", " + GetSRC(src1) + ")"); break; // MAX
+		case FragmentShaderOpcode::SLT: AddCode("vec4(lessThan(" + GetSRC(src0) + ", " + GetSRC(src1) + "))"); break; // SLT
+		case FragmentShaderOpcode::SGE: AddCode("vec4(greaterThanEqual(" + GetSRC(src0) + ", " + GetSRC(src1) + "))"); break; // SGE
+		case FragmentShaderOpcode::SLE: AddCode("vec4(lessThanEqual(" + GetSRC(src0) + ", " + GetSRC(src1) + "))"); break; // SLE
+		case FragmentShaderOpcode::SGT: AddCode("vec4(greaterThan(" + GetSRC(src0) + ", " + GetSRC(src1) + "))"); break; // SGT
+		case FragmentShaderOpcode::SNE: AddCode("vec4(notEqual(" + GetSRC(src0) + ", " + GetSRC(src1) + "))"); break; // SNE
+		case FragmentShaderOpcode::SEQ: AddCode("vec4(equal(" + GetSRC(src0) + ", " + GetSRC(src1) + "))"); break; // SEQ
 
-		case 0x10: AddCode("fract(" + GetSRC(src0) + ")"); break; // FRC
-		case 0x11: AddCode("floor(" + GetSRC(src0) + ")"); break; // FLR
-		//case 0x12: break; // KIL
-		//case 0x13: break; // PK4
-		//case 0x14: break; // UP4
-		case 0x15: AddCode("dFdx(" + GetSRC(src0) + ")"); break; // DDX
-		case 0x16: AddCode("dFdy(" + GetSRC(src0) + ")"); break; // DDY
-		case 0x17: AddCode("texture(" + AddTex() + ", " + GetSRC(src0) + ".xy)"); break; //TEX
-		//case 0x18: break; // TXP
-		//case 0x19: break; // TXD
-		case 0x1a: AddCode("1 / (" + GetSRC(src0) + ")"); break; // RCP
-		case 0x1b: AddCode("inversesqrt(" + GetSRC(src0) + ")"); break; // RSQ
-		case 0x1c: AddCode("exp2(" + GetSRC(src0) + ")"); break; // EX2
-		case 0x1d: AddCode("log2(" + GetSRC(src0) + ")"); break; // LG2
-		//case 0x1e: break; // LIT
-		//case 0x1f: break; // LRP
+		case FragmentShaderOpcode::FRC: AddCode("fract(" + GetSRC(src0) + ")"); break; // FRC
+		case FragmentShaderOpcode::FLR: AddCode("floor(" + GetSRC(src0) + ")"); break; // FLR
+		//case FragmentShaderOpcode::KIL: break; // KIL
+		//case FragmentShaderOpcode::PK4: break; // PK4
+		//case FragmentShaderOpcode::UP4: break; // UP4
+		case FragmentShaderOpcode::DDX: AddCode("dFdx(" + GetSRC(src0) + ")"); break; // DDX
+		case FragmentShaderOpcode::DDY: AddCode("dFdy(" + GetSRC(src0) + ")"); break; // DDY
+		case FragmentShaderOpcode::TEX: AddCode("texture(" + AddTex() + ", " + GetSRC(src0) + ".xy)"); break; //TEX
+		//case FragmentShaderOpcode::TXP: break; // TXP
+		//case FragmentShaderOpcode::TXD: break; // TXD
+		case FragmentShaderOpcode::RCP: AddCode("1 / (" + GetSRC(src0) + ")"); break; // RCP
+		case FragmentShaderOpcode::RSQ: AddCode("inversesqrt(" + GetSRC(src0) + ")"); break; // RSQ
+		case FragmentShaderOpcode::EX2: AddCode("exp2(" + GetSRC(src0) + ")"); break; // EX2
+		case FragmentShaderOpcode::LG2: AddCode("log2(" + GetSRC(src0) + ")"); break; // LG2
+		//case FragmentShaderOpcode::LIT: break; // LIT
+		//case FragmentShaderOpcode::LRP: break; // LRP
 
-		//case 0x20: break; // STR
-		//case 0x21: break; // SFL
-		case 0x22: AddCode("cos(" + GetSRC(src0) + ")"); break; // COS
-		case 0x23: AddCode("sin(" + GetSRC(src0) + ")"); break; // SIN
-		//case 0x24: break; // PK2
-		//case 0x25: break; // UP2
-		case 0x26: AddCode("pow(" + GetSRC(src0) + ", " + GetSRC(src1) +")"); break; // POW
-		//case 0x27: break; // PKB
-		//case 0x28: break; // UPB
-		//case 0x29: break; // PK16
-		//case 0x2a: break; // UP16
-		//case 0x2b: break; // BEM
-		//case 0x2c: break; // PKG
-		//case 0x2d: break; // UPG
-		//case 0x2e: break; // DP2A
-		//case 0x2f: break; // TXL
+		//case FragmentShaderOpcode::STR: break; // STR
+		//case FragmentShaderOpcode::SFL: break; // SFL
+		case FragmentShaderOpcode::COS: AddCode("cos(" + GetSRC(src0) + ")"); break; // COS
+		case FragmentShaderOpcode::SIN: AddCode("sin(" + GetSRC(src0) + ")"); break; // SIN
+		//case FragmentShaderOpcode::PK2: break; // PK2
+		//case FragmentShaderOpcode::UP2: break; // UP2
+		case FragmentShaderOpcode::POW: AddCode("pow(" + GetSRC(src0) + ", " + GetSRC(src1) + ")"); break; // POW
+		//case FragmentShaderOpcode::PKB: break; // PKB
+		//case FragmentShaderOpcode::UPB: break; // UPB
+		//case FragmentShaderOpcode::PK16: break; // PK16
+		//case FragmentShaderOpcode::UP16: break; // UP16
+		//case FragmentShaderOpcode::BEM: break; // BEM
+		//case FragmentShaderOpcode::PKG: break; // PKG
+		//case FragmentShaderOpcode::UPG: break; // UPG
+		//case FragmentShaderOpcode::DP2A: break; // DP2A
+		//case FragmentShaderOpcode::TXL: break; // TXL
 
-		//case 0x31: break; // TXB
-		//case 0x33: break; // TEXBEM
-		//case 0x34: break; // TXPBEM
-		//case 0x35: break; // BEMLUM
-		//case 0x36: break; // REFL
-		//case 0x37: break; // TIMESWTEX
-		case 0x38: AddCode("vec2(dot(" + GetSRC(src0) + ".xy, " + GetSRC(src1) + ".xy)).xxxx"); break; // DP2
-		case 0x39: AddCode("normalize(" + GetSRC(src0) + ".xyz)"); break; // NRM
-		case 0x3a: AddCode("(" + GetSRC(src0) + " / " + GetSRC(src1) + ")"); break; // DIV
-		case 0x3b: AddCode("(" + GetSRC(src0) + " / sqrt(" + GetSRC(src1) + "))"); break; // DIVSQ
-		//case 0x3c: break; // LIF
-		case 0x3d: break; // FENCT
-		case 0x3e: break; // FENCB
+		//case FragmentShaderOpcode::TXB: break; // TXB
+		//case FragmentShaderOpcode::TEXBEM: break; // TEXBEM
+		//case FragmentShaderOpcode::TXPBEM: break; // TXPBEM
+		//case FragmentShaderOpcode::BEMLUM: break; // BEMLUM
+		//case FragmentShaderOpcode::REFL: break; // REFL
+		//case FragmentShaderOpcode::TIMESWTEX: break; // TIMESWTEX
+		case FragmentShaderOpcode::DP2: AddCode("vec2(dot(" + GetSRC(src0) + ".xy, " + GetSRC(src1) + ".xy)).xxxx"); break; // DP2
+		case FragmentShaderOpcode::NRM: AddCode("normalize(" + GetSRC(src0) + ".xyz)"); break; // NRM
+		case FragmentShaderOpcode::DIV: AddCode("(" + GetSRC(src0) + " / " + GetSRC(src1) + ")"); break; // DIV
+		case FragmentShaderOpcode::DIVSQ: AddCode("(" + GetSRC(src0) + " / sqrt(" + GetSRC(src1) + "))"); break; // DIVSQ
+		//case FragmentShaderOpcode::LIF: break; // LIF
+		case FragmentShaderOpcode::FENCT: break; // FENCT
+		case FragmentShaderOpcode::FENCB: break; // FENCB
 
 		default:
 			ConLog.Error("Unknown opcode 0x%x (inst %d)", opcode, m_size / (4 * 4));
@@ -375,7 +381,7 @@ void GLShaderProgram::Wait()
 
 void GLShaderProgram::Decompile(RSXShaderProgram& prog)
 {
-	GLFragmentDecompilerThread decompiler(m_shader, m_parr, prog.addr, prog.size, prog.ctrl);
+	GLFragmentDecompilerThread decompiler(m_shader, m_parr, prog.addr, prog.size, prog.ctrl.value);
 	decompiler.Task();
 }
 
@@ -393,7 +399,7 @@ void GLShaderProgram::DecompileAsync(RSXShaderProgram& prog)
 		m_decompiler_thread = nullptr;
 	}
 
-	m_decompiler_thread = new GLFragmentDecompilerThread(m_shader, m_parr, prog.addr, prog.size, prog.ctrl);
+	m_decompiler_thread = new GLFragmentDecompilerThread(m_shader, m_parr, prog.addr, prog.size, prog.ctrl.value);
 	m_decompiler_thread->Start();
 }
 
