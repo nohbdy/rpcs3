@@ -406,6 +406,15 @@ bool GLGSRender::LoadProgram()
 		auto glslShaderSource = writer.Process();
 		m_shader_prog.SetShaderText(glslShaderSource);
 
+#if 0
+		// Read in a GLSL Shader from ForcedFragment.txt and use that instead.. for debugging porpoises
+		wxFile shaderFile(wxGetCwd() + "/ForcedFragment.txt", wxFile::read);
+		wxString shaderStr;
+		shaderFile.ReadAll(&shaderStr);
+		m_shader_prog.SetShaderText(shaderStr.ToStdString());
+		shaderFile.Close();
+#endif
+
 		// Gotta write the size... at least until we change the caching
 		m_cur_shader_prog->size = parser.GetSize();
 
@@ -415,6 +424,7 @@ bool GLGSRender::LoadProgram()
 
 		wxFile f(wxGetCwd() + "/FragmentProgram.txt", wxFile::write);
 		f.Write(m_shader_prog.GetShaderText());
+		f.Close();
 	}
 
 	if(m_vp_buf_num == -1)

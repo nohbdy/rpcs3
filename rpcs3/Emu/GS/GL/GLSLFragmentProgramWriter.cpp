@@ -1,6 +1,10 @@
 #include "stdafx.h"
 #include "GLSLFragmentProgramWriter.h"
 
+namespace rpcs3 {
+namespace rsx {
+namespace gl {
+
 namespace {
 	const u32 kMaximumIndentation = 6;
 	const std::string kIndentation[kMaximumIndentation + 1] {
@@ -36,42 +40,42 @@ namespace {
 	};
 
 	static const std::string kWriteMasks[] {
-		"",		// 0000
-		".x",	// 0001
-		".y",	// 0010
-		".xy",	// 0011
-		".z",	// 0100
-		".xz",	// 0101
-		".yz",	// 0110
-		".xyz",	// 0111
-		".w",	// 1000
-		".xw",	// 1001
-		".yw",	// 1010
-		".xyw",	// 1011
-		".zw",	// 1100
-		".xzw",	// 1101
-		".yzw",	// 1110
-		"",		// 1111
+		"",     // 0000
+		".x",   // 0001
+		".y",   // 0010
+		".xy",  // 0011
+		".z",   // 0100
+		".xz",  // 0101
+		".yz",  // 0110
+		".xyz", // 0111
+		".w",   // 1000
+		".xw",  // 1001
+		".yw",  // 1010
+		".xyw", // 1011
+		".zw",  // 1100
+		".xzw", // 1101
+		".yzw", // 1110
+		"",     // 1111
 	};
 
 	/** Array of masks used to limit the output to the number of values the destination uses */
 	static const std::string kVectorCast[] {
-		"",		// 0000
-		".x",	// 0001
-		".x",	// 0010
-		".xy",	// 0011
-		".x",	// 0100
-		".xy",	// 0101
-		".xy",	// 0110
-		".xyz",	// 0111
-		".x",	// 1000
-		".xy",	// 1001
-		".xy",	// 1010
-		".xyz",	// 1011
-		".xy",	// 1100
-		".xyz",	// 1101
-		".xyz",	// 1110
-		"",		// 1111
+		"",     // 0000
+		".x",   // 0001
+		".x",   // 0010
+		".xy",  // 0011
+		".x",   // 0100
+		".xy",  // 0101
+		".xy",  // 0110
+		".xyz", // 0111
+		".x",   // 1000
+		".xy",  // 1001
+		".xy",  // 1010
+		".xyz", // 1011
+		".xy",  // 1100
+		".xyz", // 1101
+		".xyz", // 1110
+		"",     // 1111
 	};
 
 	// Map a destination write mask to the number of components written by that mask
@@ -84,26 +88,96 @@ namespace {
 		"fogc",
 		"tc0", "tc1", "tc2", "tc3", "tc4", "tc5", "tc6", "tc7", "tc8", "tc9", "face_sign"
 	};
-}
 
-namespace rpcs3 {
-namespace rsx {
-namespace gl {
+	/** Return true if the condition mask uses the same condition component for each channel */
+	inline bool SingleComponentCondition(u32 conditionMask)
+	{
+		const u32 allX = 0x00;  // binary: 00000000
+		const u32 allY = 0x55;  // binary: 01010101
+		const u32 allZ = 0xAA;	// binary: 10101010
+		const u32 allW = 0xFF;	// binary: 11111111
+		if ((conditionMask == allX) || (conditionMask == allY) || (conditionMask == allZ) || (conditionMask == allW)) {
+			return true;
+		}
+		return false;
+	}
+
+	inline bool CanDoSingleInstruction(const FragmentShaderInstructionBase& insn)
+	{
+		if (insn.Condition() != FragmentShaderCondition::True) {
+			auto conditionMask = insn.ConditionMask();
+			// If we use the same condition for all channels, we can do it all in a single line..
+			// If one or more of the components uses a different condition component, we need multiple instructions
+			return SingleComponentCondition(insn.ConditionMask());
+		} else {
+			return true; // Condition == True, so there's no conditional writes
+		}
+	}
+
+	inline u32 NumWrittenComponents(const FragmentShaderInstructionBase& insn)
+	{
+		return kWriteComponents[insn.GetDestinationWriteMask()];
+	}
+}
 
 GLSLFragmentProgramWriter::GLSLFragmentProgramWriter(const FragmentShaderInstructionList& instructions, FragmentProgramControl control)
 	: m_control(control),
 	m_indentationLevel(1),
+	m_currentComponent(0),
+	m_singleComponent(false),
+	m_useWriteMask(false),
+	m_writeMask(0),
 	m_instructions(instructions)
 {
 }
 
-std::string GLSLFragmentProgramWriter::Process() {
-	std::string result("#version 330\n\n");
+void GLSLFragmentProgramWriter::ProcessInstructionList(const FragmentShaderInstructionList& instructions) {
+	for (const auto& insn_ptr : instructions) {
+		auto opcode = insn_ptr->GetOpcode();
+		const auto& insn = *insn_ptr;
+		m_singleComponent = false;
+		m_currentComponent = 0;
 
-	// Visit all of the instructions, GLSL source will get accumulated in m_str
-	for (auto& insn : m_instructions) {
-		insn->Accept(*this);
+		switch (opcode)
+		{
+		case FragmentShaderOpcode::NOP:
+		case FragmentShaderOpcode::FENCB:
+		case FragmentShaderOpcode::FENCT:
+			// do nothing for NOP, FENCT, FENCB
+			break;
+		case FragmentShaderOpcode::IFE:
+		case FragmentShaderOpcode::LOOP:
+		case FragmentShaderOpcode::REP:
+			// Ifs and Loops handle their own beginning and ending
+			insn_ptr->Accept(*this);
+			break;
+		default:
+			if (CanDoSingleInstruction(insn)) {
+				// Other instructions may be wrapped in stuff
+				PreInstruction(insn);
+				insn_ptr->Accept(*this);
+				PostInstruction(insn);
+			} else {
+				auto nComponents = NumWrittenComponents(insn);
+				m_singleComponent = true;
+				for (u32 i = 0; i < nComponents; ++i) {
+					m_currentComponent = i;
+					PreInstruction(insn);
+					insn_ptr->Accept(*this);
+					PostInstruction(insn);
+				}
+			}
+			break;
+		}
 	}
+}
+
+std::string GLSLFragmentProgramWriter::Process() {
+	// Build our main code block by processing all the instructions in order
+	ProcessInstructionList(m_instructions);
+
+	// Storage for complete GLSL fragment shader
+	std::string result("#version 330\n\n");
 
 	// Write input parameters
 	for (auto semantic : m_usedInputs) {
@@ -195,6 +269,15 @@ void GLSLFragmentProgramWriter::TrackRegister(const std::string& registerName, u
 
 void GLSLFragmentProgramWriter::WriteSwizzleMask(u32 mask)
 {
+	if (m_singleComponent) {
+		WriteSwizzleMask(mask, m_currentComponent, 1 /* count */);
+	} else {
+		WriteSwizzleMask(mask, 0 /* skip */, 4 /* max count */);
+	}
+}
+
+void GLSLFragmentProgramWriter::WriteSwizzleMask(u32 mask, u32 skip, u32 count)
+{
 	static const u32 kMask = 0x3; // 2-bit mask
 	static const u32 kShiftX = 0;
 	static const u32 kShiftY = 2;
@@ -206,45 +289,84 @@ void GLSLFragmentProgramWriter::WriteSwizzleMask(u32 mask)
 	static const char kComponents[4] = { 'x', 'y', 'z', 'w' };
 
 	// Swizzle Mask == '.xyzw' which is the same as adding nothing
-	if ((mask == kPassThroughMask) && (!m_useWriteMask || (m_writeMask == 0xF))) { return; }
+	if ((mask == kPassThroughMask) && // mask is passthrough
+		(!m_useWriteMask || (m_writeMask == 0xF)) && // and destination takes all components
+		((skip == 0) && (count >= 4))) // and we're supposed to write all the components
+	{ return; }
+
+	u32 written = 0;
+	u32 skipped = 0;
 
 	m_str << '.';
 	if (m_useWriteMask) {
-		if (m_writeMask & 0x1) m_str << kComponents[(mask >> kShiftX) & kMask]; // Swizzle X component
-		if (m_writeMask & 0x2) m_str << kComponents[(mask >> kShiftY) & kMask]; // Swizzle Y component
-		if (m_writeMask & 0x4) m_str << kComponents[(mask >> kShiftZ) & kMask]; // Swizzle Z component
-		if (m_writeMask & 0x8) m_str << kComponents[(mask >> kShiftW) & kMask]; // Swizzle W component
+		u32 writeMaskMask = 0x1;
+		for (int i = 0; i < 4; i++) {
+			if (m_writeMask & writeMaskMask) { // We only concern ourselves with components that are actually being written
+				if (skipped < skip) { // Check if we've skipped enough
+					++skipped;
+					continue;
+				}
+				if (written < count) // Check if we've written enough
+				{
+					written++;
+					m_str << kComponents[(mask >> (i * 2)) & kMask];
+				}
+			}
+			writeMaskMask <<= 1; // shift writeMaskMask to the left by 1 bit
+		}
 	} else {
-		m_str << kComponents[(mask >> kShiftX) & kMask]; // Swizzle X component
-		m_str << kComponents[(mask >> kShiftY) & kMask]; // Swizzle Y component
-		m_str << kComponents[(mask >> kShiftZ) & kMask]; // Swizzle Z component
-		m_str << kComponents[(mask >> kShiftW) & kMask]; // Swizzle W component
+		for (int i = 0; i < 4; i++) {
+			if (skipped < skip) { // Check if we've skipped enough
+				++skipped;
+				continue;
+			}
+			if (written < count) // Check if we've written enough
+			{
+				written++;
+				m_str << kComponents[(mask >> (i * 2)) & kMask];
+			}
+		}
 	}
 	return;
 }
 
 void GLSLFragmentProgramWriter::PreInstruction(const FragmentShaderInstructionBase& insn)
 {
+	if (insn.HasDestination()) {
+		m_useWriteMask = true;
+		m_writeMask = insn.GetDestinationWriteMask();
+	} else {
+		m_useWriteMask = false;
+	}
+
 	m_str << kIndentation[m_indentationLevel];
 
 	if (insn.Condition() != FragmentShaderCondition::True) {
-		// if-statement block
-		m_str << "if (all(";
-		m_str << kConditionMap[insn.Condition()];
-		m_str << "(rc";
-		if (insn.ConditionRegisterRead() > 0) {
-			m_str << insn.ConditionRegisterRead();
+		if (m_singleComponent || SingleComponentCondition(insn.ConditionMask())) {
+			// Only use a single component of the condition for this if, use a float comparison
+			// if (rc.x < 0.0) {
+			m_str << "if (rc";
+			// write the condition register index if it's > 0
+			if (insn.ConditionRegisterRead() > 0) { m_str << insn.ConditionRegisterRead(); }
+			// write component
+			WriteSwizzleMask(insn.ConditionMask(), m_currentComponent, 1);
+			m_str << kIfConditionMap[insn.Condition()];
+			m_str << "0.0) {" << std::endl;
+		} else {
+			// if-statement block
+			m_str << "if (all(";
+			m_str << kConditionMap[insn.Condition()];
+			m_str << "(rc";
+			if (insn.ConditionRegisterRead() > 0) { m_str << insn.ConditionRegisterRead(); }
+			WriteSwizzleMask(insn.ConditionMask());
+			m_str << ", vec4(0.0)))) {" << std::endl;
 		}
-		WriteSwizzleMask(insn.ConditionMask());
-		m_str << ", vec4(0.0)))) {" << std::endl;
+
 		Indent();
 		m_str << kIndentation[m_indentationLevel];
 	}
 
 	if (insn.HasDestination()) {
-		m_writeMask = insn.GetDestinationWriteMask();
-		m_useWriteMask = true;
-
 		std::string destinationRegisterName(insn.GetIsDestFP16() ? "h" : "r");
 		if (insn.TargetsConditionRegister()) {
 			destinationRegisterName.append("c");
@@ -257,7 +379,17 @@ void GLSLFragmentProgramWriter::PreInstruction(const FragmentShaderInstructionBa
 			destinationRegisterName.append(std::to_string(insn.GetDestinationRegisterIndex()));
 			TrackRegister(destinationRegisterName, insn.GetDestinationRegisterIndex(), insn.GetIsDestFP16());
 		}
-		m_str << destinationRegisterName << kWriteMasks[m_writeMask];
+		m_str << destinationRegisterName;
+		// Write destination mask
+		if (m_singleComponent) {
+			if (m_writeMask == 0xF) {
+				m_str << '.' << ('x' + m_currentComponent);
+			} else {
+				m_str << '.' << kWriteMasks[m_writeMask][m_currentComponent + 1];
+			}
+		} else {
+			m_str << kWriteMasks[m_writeMask];
+		}
 		m_str << " = ";
 
 		if (insn.IsBiased()) {
@@ -332,48 +464,30 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderNoOperationInstruction
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderMoveInstruction& insn) {
-	PreInstruction(insn);
-
 	// Write first operand
 	insn.Operand1().Accept(*this);
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderMultiplyInstruction& insn) {
-	PreInstruction(insn);
-
 	insn.Operand1().Accept(*this);
 	m_str << " * ";
 	insn.Operand2().Accept(*this);
-
-	PostInstruction(insn);
 }
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderAddInstruction& insn) {
-	PreInstruction(insn);
-
 	insn.Operand1().Accept(*this);
 	m_str << " + ";
 	insn.Operand2().Accept(*this);
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderMultiplyAddInstruction& insn) {
-	PreInstruction(insn);
-
 	insn.Operand1().Accept(*this);
 	m_str << " * ";
 	insn.Operand2().Accept(*this);
 	m_str << " + ";
 	insn.Operand3().Accept(*this);
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderDotProduct3Instruction& insn) {
-	PreInstruction(insn);
-
 	m_useWriteMask = false;
 
 	m_str << "dot(";
@@ -381,13 +495,9 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderDotProduct3Instruction
 	m_str << ".xyz, ";
 	insn.Operand2().Accept(*this);
 	m_str << ".xyz)";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderDotProduct4Instruction& insn) {
-	PreInstruction(insn);
-
 	m_useWriteMask = false;
 
 	m_str << "dot(";
@@ -395,49 +505,34 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderDotProduct4Instruction
 	m_str << ", ";
 	insn.Operand2().Accept(*this);
 	m_str << ")";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderDistanceInstruction& insn) {
-	PreInstruction(insn);
-
 	m_str << "distance(";
 	insn.Operand1().Accept(*this);
 	m_str << ", ";
 	insn.Operand2().Accept(*this);
 	m_str << ")";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderMinimumInstruction& insn) {
-	PreInstruction(insn);
-
 	m_str << "min(";
 	insn.Operand1().Accept(*this);
 	m_str << ", ";
 	insn.Operand2().Accept(*this);
 	m_str << ")";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderMaximumInstruction& insn) {
-	PreInstruction(insn);
-
 	m_str << "max(";
 	insn.Operand1().Accept(*this);
 	m_str << ", ";
 	insn.Operand2().Accept(*this);
 	m_str << ")";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnLessThanInstruction& insn) {
 	// dst.xy = vecX(lessThan(op1, op2).dstMask)
-	PreInstruction(insn);
 	switch (kWriteComponents[m_writeMask]) {
 	case 1:
 		m_str << "float(";
@@ -455,11 +550,9 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnLessThanInstructi
 		m_str << "))";
 		break;
 	}
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnGreaterEqualInstruction& insn) {
-	PreInstruction(insn);
 	switch (kWriteComponents[m_writeMask]) {
 	case 1:
 		m_str << "float(";
@@ -477,11 +570,9 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnGreaterEqualInstr
 		m_str << "))";
 		break;
 	}
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnLessEqualInstruction& insn) {
-	PreInstruction(insn);
 	switch (kWriteComponents[m_writeMask]) {
 	case 1:
 		m_str << "float(";
@@ -499,11 +590,9 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnLessEqualInstruct
 		m_str << "))";
 		break;
 	}
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnGreaterThanInstruction& insn) {
-	PreInstruction(insn);
 	switch (kWriteComponents[m_writeMask]) {
 	case 1:
 		m_str << "float(";
@@ -521,11 +610,9 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnGreaterThanInstru
 		m_str << "))";
 		break;
 	}
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnNotEqualInstruction& insn) {
-	PreInstruction(insn);
 	switch (kWriteComponents[m_writeMask]) {
 	case 1:
 		m_str << "float(";
@@ -543,11 +630,9 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnNotEqualInstructi
 		m_str << "))";
 		break;
 	}
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnEqualInstruction& insn) {
-	PreInstruction(insn);
 	switch (kWriteComponents[m_writeMask]) {
 	case 1:
 		m_str << "float(";
@@ -565,33 +650,22 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnEqualInstruction&
 		m_str << "))";
 		break;
 	}
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderFractionInstruction& insn) {
-	PreInstruction(insn);
-
 	m_str << "fract(";
 	insn.Operand1().Accept(*this);
 	m_str << ")";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderFloorInstruction& insn) {
-	PreInstruction(insn);
-
 	m_str << "floor(";
 	insn.Operand1().Accept(*this);
 	m_str << ")";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderKillInstruction& insn) {
-	PreInstruction(insn);
 	m_str << "discard";
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderPack4Instruction& insn) {}
@@ -599,83 +673,67 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderPack4Instruction& insn
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderUnpack4Instruction& insn) {}
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderDDXInstruction& insn) {
-	PreInstruction(insn);
-
 	m_str << "dFdx(";
 	insn.Operand1().Accept(*this);
 	m_str << ")";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderDDYInstruction& insn) {
-	PreInstruction(insn);
-
 	m_str << "dFdy(";
 	insn.Operand1().Accept(*this);
 	m_str << ")";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderTextureInstruction& insn) {
-	PreInstruction(insn);
-
 	m_str << "texture(tex" << insn.TextureSampler() << ", ";
 	insn.Operand1().Accept(*this);
 	m_str << ".xy)";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderTextureProjectionInstruction& insn) {}
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderTextureDerivativeInstruction& insn) {}
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderReciprocalInstruction& insn) {
-	PreInstruction(insn);
-
 	m_useWriteMask = false;
 
 	m_str << "(1.0 / (";
 	insn.Operand1().Accept(*this);
-	m_str << "))" << kVectorCast[m_writeMask];
-
-	PostInstruction(insn);
+	m_str << "))";
+	if (!m_singleComponent) {
+		m_str << kVectorCast[m_writeMask];
+	}
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderReciprocalSquareRootInstruction& insn) {
-	PreInstruction(insn);
-
 	m_useWriteMask = false;
 
 	m_str << "inversesqrt(";
 	insn.Operand1().Accept(*this);
-	m_str << ")" << kVectorCast[m_writeMask];
-
-	PostInstruction(insn);
+	m_str << ")";
+	if (!m_singleComponent) {
+		m_str << kVectorCast[m_writeMask];
+	}
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderExponential2Instruction& insn) {
-	PreInstruction(insn);
-
 	m_useWriteMask = false;
 
 	m_str << "exp2(";
 	insn.Operand1().Accept(*this);
-	m_str << ")" << kVectorCast[m_writeMask];
-
-	PostInstruction(insn);
+	m_str << ")";
+	if (!m_singleComponent) {
+		m_str << kVectorCast[m_writeMask];
+	}
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderLog2Instruction& insn) {
-	PreInstruction(insn);
-
 	m_useWriteMask = false;
 
 	m_str << "log2(";
 	insn.Operand1().Accept(*this);
-	m_str << ")" << kVectorCast[m_writeMask];
-
-	PostInstruction(insn);
+	m_str << ")";
+	if (!m_singleComponent) {
+		m_str << kVectorCast[m_writeMask];
+	}
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderLightingInstruction& insn) {}
@@ -683,39 +741,33 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderLerpInstruction& insn)
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnTrueInstruction& insn) {}
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderSetOnFalseInstruction& insn) {}
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderCosineInstruction& insn) {
-	PreInstruction(insn);
-
 	m_useWriteMask = false;
 
 	m_str << "cos(";
 	insn.Operand1().Accept(*this);
-	m_str << ")" << kVectorCast[m_writeMask];
-
-	PostInstruction(insn);
+	m_str << ")";
+	if (!m_singleComponent) {
+		m_str << kVectorCast[m_writeMask];
+	}
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderSineInstruction& insn) {
-	PreInstruction(insn);
-
 	m_useWriteMask = false;
 
 	m_str << "sin(";
 	insn.Operand1().Accept(*this);
-	m_str << ")" << kVectorCast[m_writeMask];
-
-	PostInstruction(insn);
+	m_str << ")";
+	if (!m_singleComponent) {
+		m_str << kVectorCast[m_writeMask];
+	}
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderPack2Instruction& insn) {}
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderUnpack2Instruction& insn) {}
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderPowInstruction& insn) {
-	PreInstruction(insn);
-
 	m_str << "pow(";
 	insn.Operand1().Accept(*this);
 	m_str << ")";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderPackBInstruction& insn) {}
@@ -727,8 +779,6 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderPackGInstruction& insn
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderUnpackGInstruction& insn) {}
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderDotProduct2AddInstruction& insn) {
-	PreInstruction(insn);
-
 	m_useWriteMask = false;
 
 	m_str << "(dot(";
@@ -741,8 +791,6 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderDotProduct2AddInstruct
 
 	insn.Operand3().Accept(*this);
 	m_str << ")";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderTextureLodInstruction& insn) {}
@@ -754,8 +802,6 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderReflectInstruction& in
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderTextureTimesWInstruction& insn) {}
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderDotProduct2Instruction& insn) {
-	PreInstruction(insn);
-
 	m_useWriteMask = false;
 
 	m_str << "dot(";
@@ -763,45 +809,35 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderDotProduct2Instruction
 	m_str << ".xy, ";
 	insn.Operand2().Accept(*this);
 	m_str << ".xy)";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderNormalizeInstruction& insn) {
-	PreInstruction(insn);
-
 	m_str << "normalize(";
 	insn.Operand1().Accept(*this);
 	m_str << ".xyz)";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderDivideInstruction& insn) {
-	PreInstruction(insn);
-
 	insn.Operand1().Accept(*this);
 	m_str << " / ";
 	m_useWriteMask = false;
 	insn.Operand2().Accept(*this);
-	m_str << kVectorCast[m_writeMask];
-
-	PostInstruction(insn);
+	if (!m_singleComponent) {
+		m_str << kVectorCast[m_writeMask];
+	}
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderDivideSquareRootInstruction& insn) {
-	PreInstruction(insn);
-
 	insn.Operand1().Accept(*this);
 	m_str << " / sqrt(";
 
 	m_useWriteMask = false;
 
 	insn.Operand2().Accept(*this);
-	m_str << kVectorCast[m_writeMask];
+	if (!m_singleComponent) {
+		m_str << kVectorCast[m_writeMask];
+	}
 	m_str << ")";
-
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderLifInstruction& insn) {}
@@ -809,9 +845,7 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderFenctInstruction& insn
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderFencbInstruction& insn) {}
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderBreakInstruction& insn) {
-	PreInstruction(insn);
 	m_str << "break";
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderCallInstruction& insn) {}
@@ -851,10 +885,7 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderIfElseInstruction& ins
 
 	m_str << ") {" << std::endl;
 	Indent();
-	for (auto& instruction : insn.GetIfInstructions())
-	{
-		instruction->Accept(*this);
-	}
+	ProcessInstructionList(insn.GetIfInstructions());
 	UnIndent();
 
 	if (insn.GetElseInstructions().size() > 0)
@@ -862,10 +893,7 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderIfElseInstruction& ins
 		m_str << kIndentation[m_indentationLevel];
 		m_str << "} else {" << std::endl;
 		Indent();
-		for (auto& instruction : insn.GetElseInstructions())
-		{
-			instruction->Accept(*this);
-		}
+		ProcessInstructionList(insn.GetElseInstructions());
 		UnIndent();
 	}
 	m_str << kIndentation[m_indentationLevel];
@@ -879,10 +907,7 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderLoopInstruction& insn)
 	m_str << "; loopCnt += " << insn.GetIncrement() << ") {" << std::endl;
 
 	Indent();
-	for (auto& instruction : insn.GetInstructions())
-	{
-		instruction->Accept(*this);
-	}
+	ProcessInstructionList(insn.GetInstructions());
 	UnIndent();
 
 	m_str << kIndentation[m_indentationLevel];
@@ -895,10 +920,7 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderRepInstruction& insn) 
 	m_str << "; loopCnt++) {" << std::endl;
 
 	Indent();
-	for (auto& instruction : insn.GetInstructions())
-	{
-		instruction->Accept(*this);
-	}
+	ProcessInstructionList(insn.GetInstructions());
 	UnIndent();
 
 	m_str << kIndentation[m_indentationLevel];
@@ -906,9 +928,7 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderRepInstruction& insn) 
 }
 
 void GLSLFragmentProgramWriter::Visit(const FragmentShaderReturnInstruction& insn) {
-	PreInstruction(insn);
 	m_str << "return";
-	PostInstruction(insn);
 }
 
 void GLSLFragmentProgramWriter::PreOperand(const FragmentShaderOperandBase& op) {
@@ -958,7 +978,7 @@ void GLSLFragmentProgramWriter::Visit(const FragmentShaderSpecialOperand& op) {
 		m_usedInputs.insert(op.InputSemantic());
 	}
 	else if (op.IsIndexRegister()) {
-		// FIXME: I don't imagine this is correct
+		// FIXME: this is wrong, but i don't have a sample that uses it
 		m_str << "aL+" << op.RegisterIndex();
 	}
 

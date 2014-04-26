@@ -228,12 +228,21 @@ namespace { // Internal Implementation Stuff
 	};
 }
 
+/**
+ * Reads a DWORD from the stream offset from the current read position
+ * RSX shader values are always stored with the high and low words swapped for some reason
+ * so we swap them back here before returning the value.
+ */
 u32 FragmentShaderBinaryReader::ReadDword(int i) {
 	u32 result = m_data[i];
 	result = ((result & 0xffff0000) >> 16) | ((result & 0xffff) << 16); // Swap high and low words
 	return result;
 }
 
+/**
+ * Reads a float from the stream at a given offset.
+ * They're stored with the hi/lo word swap as well so just reuse ReadDword and reinterpret the result
+ */
 float FragmentShaderBinaryReader::ReadFloat(int i) {
 	auto dword = ReadDword(i);
 	return *(float*)&dword;
@@ -247,9 +256,11 @@ FragmentShaderBinaryReader::FragmentShaderBinaryReader(u32 addr)
 	m_inBeginEnd(false)
 { }
 
+/**
+ * Called when beginning the processing of a new instruction
+ */
 void FragmentShaderBinaryReader::BeginInstruction(u32& dst, u32& src0, u32& src1, u32& src2) {
-	// If we previously read a constant, we now need to skip that line
-	// to get to the next instruction
+	// If they didn't call EndInstruction() manually, we need to do it here
 	if (m_inBeginEnd) { EndInstruction(); }
 
 	m_inBeginEnd = true;
@@ -259,6 +270,14 @@ void FragmentShaderBinaryReader::BeginInstruction(u32& dst, u32& src0, u32& src1
 	src2 = ReadDword(3);
 }
 
+/**
+ * Assuming the data pointer always points to the start of an instruction, the
+ * second 'line' (dwords 4-7) will be a 4-component floating point vector.
+ * This constant data is not on every instruction, only on ones with constant operands.
+ * Calling this function marks the instruction as having this constant data, and will
+ * cause it to be skipped over when EndInstruction() is called, so only call this
+ * if you are sure the instruction has valid constant data.
+ */
 void FragmentShaderBinaryReader::ReadVec4(float& x, float& y, float& z, float& w) {
 	m_readConstant = true;
 	x = ReadFloat(4);
@@ -267,6 +286,10 @@ void FragmentShaderBinaryReader::ReadVec4(float& x, float& y, float& z, float& w
 	w = ReadFloat(7);
 }
 
+/**
+ * Ends processing of the current instruction. Updates data pointer, bytes read,
+ * and line number for the next instruction.
+ */
 void FragmentShaderBinaryReader::EndInstruction() {
 	if (!m_inBeginEnd) return;
 

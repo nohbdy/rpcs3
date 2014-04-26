@@ -8,7 +8,6 @@
 namespace rpcs3 {
 namespace rsx {
 namespace gl {
-
 	class GLSLFragmentProgramWriter : ShaderVisitor
 	{
 		/** Accumulates our GLSL shader output */
@@ -34,16 +33,33 @@ namespace gl {
 
 		u32 m_indentationLevel;
 
+		/** Single component mode switch. In single component mode we only write a single component at a time to the destination register. */
+		bool m_singleComponent;
+
+		/** When in single component mode, this is the (0-indexed) component we're currently writing */
+		u32 m_currentComponent;
+
 		FragmentProgramControl m_control;
 
 		const FragmentShaderInstructionList& m_instructions;
 
-		/** Write a swizzle mask to the stringstream */
+		/** Write a swizzle mask to the stringstream
+		 * @param mask The 8-bit swizzle mask
+		 * @param skip How many components to skip before writing more
+		 * @param count How many components to write
+		 */
+		void WriteSwizzleMask(u32 mask, u32 skip, u32 count);
+
+		/** Write a swizzle mask to the stringstream.
+		 * This version will call WriteSwizzleMask(mask, skip, count)
+		 * @param mask The 8-bit swizzle mask
+		 */
 		void WriteSwizzleMask(u32 mask);
 
 		void TrackRegister(const std::string& registerName, u32 index, bool isFp16);
 
 		void PreInstruction(const FragmentShaderInstructionBase& insn);
+
 		void PostInstruction(const FragmentShaderInstructionBase& insn);
 
 		void PreOperand(const FragmentShaderOperandBase& op);
@@ -51,6 +67,8 @@ namespace gl {
 
 		void Indent();
 		void UnIndent();
+
+		void ProcessInstructionList(const FragmentShaderInstructionList& instructions);
 
 	public:
 		GLSLFragmentProgramWriter(const FragmentShaderInstructionList& instructions, FragmentProgramControl control);
